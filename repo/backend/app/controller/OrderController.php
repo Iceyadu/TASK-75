@@ -14,6 +14,7 @@ class OrderController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->orderService = new OrderService();
     }
 
@@ -70,7 +71,7 @@ class OrderController extends BaseController
      */
     public function store()
     {
-        validate($this->request->post(), 'app\validate\OrderValidate.create');
+        validate('app\validate\OrderValidate.create')->check($this->request->post());
 
         $order = $this->orderService->create(
             $this->request->orgId,
@@ -223,7 +224,7 @@ class OrderController extends BaseController
 
         // Validate cancel fields if provided
         if ($reasonCode !== null || $reasonText !== null) {
-            validate($this->request->post(), 'app\validate\OrderValidate.cancel');
+            validate('app\validate\OrderValidate.cancel')->check($this->request->post());
         }
 
         $order = $this->orderService->cancel(
@@ -251,7 +252,7 @@ class OrderController extends BaseController
         }
         $this->verifyParty($order);
 
-        validate($this->request->post(), 'app\validate\OrderValidate.dispute');
+        validate('app\validate\OrderValidate.dispute')->check($this->request->post());
 
         $order = $this->orderService->dispute(
             (int) $id,
@@ -271,7 +272,7 @@ class OrderController extends BaseController
      */
     public function resolve($id)
     {
-        validate($this->request->post(), 'app\validate\OrderValidate.resolve');
+        validate('app\validate\OrderValidate.resolve')->check($this->request->post());
 
         $order = $this->orderService->resolve(
             (int) $id,

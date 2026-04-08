@@ -15,6 +15,7 @@ class UserController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->auditService = new AuditService();
     }
 

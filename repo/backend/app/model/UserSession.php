@@ -10,7 +10,7 @@ class UserSession extends Model
 
     protected $autoWriteTimestamp = false;
 
-    protected $dateFormat = 'Y-m-d\TH:i:s\Z';
+    protected $dateFormat = 'Y-m-d H:i:s';
 
     // ---- Relationships ----
 

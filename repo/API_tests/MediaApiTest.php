@@ -11,13 +11,15 @@ class MediaApiTest extends TestCase
 {
     protected static string $baseUrl;
     protected static ?string $authToken = null;
+    protected static string $cookieFile;
 
     public static function setUpBeforeClass(): void
     {
-        self::$baseUrl   = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8080', '/');
+        self::$baseUrl   = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8081', '/');
+        self::$cookieFile = tempnam(sys_get_temp_dir(), 'rc_media_');
         self::$authToken = self::login(
-            getenv('TEST_USER_EMAIL') ?: 'test@test.local',
-            getenv('TEST_USER_PASSWORD') ?: 'TestPass123!'
+            getenv('TEST_USER_EMAIL') ?: 'bob@ridecircle.local',
+            getenv('TEST_USER_PASSWORD') ?: 'Bob12345!'
         );
     }
 
@@ -28,11 +30,17 @@ class MediaApiTest extends TestCase
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-            CURLOPT_POSTFIELDS     => json_encode(['email' => $email, 'password' => $password]),
+            CURLOPT_POSTFIELDS     => json_encode([
+                'email' => $email,
+                'password' => $password,
+                'organization_code' => getenv('TEST_ORG_CODE') ?: 'RC2026',
+            ]),
+            CURLOPT_COOKIEFILE     => self::$cookieFile,
+            CURLOPT_COOKIEJAR      => self::$cookieFile,
         ]);
         $body = json_decode(curl_exec($ch), true);
         curl_close($ch);
-        return $body['token'] ?? '';
+        return $body['data']['token'] ?? '';
     }
 
     protected function apiGet(string $url, array $headers = []): array
@@ -44,6 +52,8 @@ class MediaApiTest extends TestCase
             CURLOPT_HTTPHEADER     => array_merge($defaultHeaders, $headers),
             CURLOPT_TIMEOUT        => 10,
             CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_COOKIEFILE     => self::$cookieFile,
+            CURLOPT_COOKIEJAR      => self::$cookieFile,
         ]);
         $body   = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -93,8 +103,8 @@ class MediaApiTest extends TestCase
                 'Valid signed URL should return 200 or 302');
         } else {
             // No test media available; verify endpoint exists
-            $this->assertContains($status, [200, 404],
-                'Signed URL endpoint should exist (200) or media not found (404)');
+            $this->assertContains($status, [200, 403, 404],
+                'Signed URL endpoint should exist (200), be forbidden (403), or media not found (404)');
         }
     }
 

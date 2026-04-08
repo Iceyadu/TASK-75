@@ -37,6 +37,8 @@ services:
       - DB_DATABASE=${DB_DATABASE:-ridecircle}
       - DB_USERNAME=${DB_USERNAME:-ridecircle}
       - DB_PASSWORD=${DB_PASSWORD:-change_me_in_production}
+      - APP_DEBUG=false
+      - APP_ENV=testing
     ports:
       - "${BACKEND_PORT:-8081}:8080"
     volumes:

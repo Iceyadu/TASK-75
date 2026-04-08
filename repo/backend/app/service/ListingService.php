@@ -40,9 +40,7 @@ class ListingService
         if ($q !== '') {
             $query->where(function ($subQuery) use ($q) {
                 $likeQ = '%' . $q . '%';
-                $subQuery->whereLike('title', $likeQ)
-                    ->whereOrLike('description', $likeQ)
-                    ->whereOr('tags', 'like', $likeQ);
+                $subQuery->whereLike('title|description|tags', $likeQ);
             });
         }
 

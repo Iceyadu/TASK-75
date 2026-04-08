@@ -15,12 +15,9 @@ abstract class BaseController
      */
     protected $request;
 
-    /**
-     * Constructor - inject the application request.
-     */
-    public function __initialize(Request $request): void
+    public function __construct(?Request $request = null)
     {
-        $this->request = $request;
+        $this->request = $request ?: app('request');
     }
 
     /**

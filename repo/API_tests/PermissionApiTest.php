@@ -14,22 +14,24 @@ class PermissionApiTest extends TestCase
     protected static ?string $userToken      = null;
     protected static ?string $moderatorToken = null;
     protected static ?string $adminToken     = null;
+    protected static string $cookieFile;
 
     public static function setUpBeforeClass(): void
     {
-        self::$baseUrl = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8080', '/');
+        self::$baseUrl = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8081', '/');
+        self::$cookieFile = tempnam(sys_get_temp_dir(), 'rc_perm_');
 
         self::$userToken = self::login(
-            getenv('TEST_USER_EMAIL') ?: 'test@test.local',
-            getenv('TEST_USER_PASSWORD') ?: 'TestPass123!'
+            getenv('TEST_USER_EMAIL') ?: 'bob@ridecircle.local',
+            getenv('TEST_USER_PASSWORD') ?: 'Bob12345!'
         );
         self::$moderatorToken = self::login(
-            getenv('TEST_MODERATOR_EMAIL') ?: 'moderator@test.local',
-            getenv('TEST_MODERATOR_PASSWORD') ?: 'TestPass123!'
+            getenv('TEST_MODERATOR_EMAIL') ?: 'moderator@ridecircle.local',
+            getenv('TEST_MODERATOR_PASSWORD') ?: 'Mod12345!'
         );
         self::$adminToken = self::login(
-            getenv('TEST_ADMIN_EMAIL') ?: 'admin@test.local',
-            getenv('TEST_ADMIN_PASSWORD') ?: 'TestPass123!'
+            getenv('TEST_ADMIN_EMAIL') ?: 'admin@ridecircle.local',
+            getenv('TEST_ADMIN_PASSWORD') ?: 'Admin123!'
         );
     }
 
@@ -40,11 +42,17 @@ class PermissionApiTest extends TestCase
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-            CURLOPT_POSTFIELDS     => json_encode(['email' => $email, 'password' => $password]),
+            CURLOPT_POSTFIELDS     => json_encode([
+                'email' => $email,
+                'password' => $password,
+                'organization_code' => getenv('TEST_ORG_CODE') ?: 'RC2026',
+            ]),
+            CURLOPT_COOKIEFILE     => self::$cookieFile,
+            CURLOPT_COOKIEJAR      => self::$cookieFile,
         ]);
         $body = json_decode(curl_exec($ch), true);
         curl_close($ch);
-        return $body['token'] ?? '';
+        return $body['data']['token'] ?? '';
     }
 
     protected function apiGet(string $path, ?string $token = null): int
@@ -56,6 +64,8 @@ class PermissionApiTest extends TestCase
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_TIMEOUT        => 10,
+            CURLOPT_COOKIEFILE     => self::$cookieFile,
+            CURLOPT_COOKIEJAR      => self::$cookieFile,
         ]);
         curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

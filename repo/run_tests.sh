@@ -26,6 +26,7 @@ API_DIR="${SCRIPT_DIR}/API_tests"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 PHPUNIT="${BACKEND_DIR}/vendor/bin/phpunit"
 PHPUNIT_CONFIG="${BACKEND_DIR}/phpunit.xml"
+API_BASE_URL_DEFAULT="${API_BASE_URL:-http://localhost:8081}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -54,8 +55,21 @@ check_prerequisites() {
     log_info "PHP version: $(php -v | head -n1)"
 
     if [ ! -f "$PHPUNIT" ]; then
-        log_error "PHPUnit not found at ${PHPUNIT}"
-        log_error "Run 'cd ${BACKEND_DIR} && composer install' to install dependencies."
+        log_warn "PHPUnit not found at ${PHPUNIT}"
+        if ! command -v composer &> /dev/null; then
+            log_error "Composer is not installed or not in PATH."
+            log_error "Run 'cd ${BACKEND_DIR} && composer install' to install dependencies."
+            exit 2
+        fi
+        log_info "Installing backend dependencies with composer..."
+        (
+            cd "${BACKEND_DIR}"
+            composer install --no-interaction --prefer-dist
+        )
+    fi
+
+    if [ ! -f "$PHPUNIT" ]; then
+        log_error "PHPUnit still not found after composer install at ${PHPUNIT}"
         exit 2
     fi
 
@@ -77,6 +91,8 @@ run_unit_tests() {
 
 run_api_tests() {
     log_info "Running API integration tests..."
+    export API_BASE_URL="${API_BASE_URL_DEFAULT}"
+    log_info "API_BASE_URL=${API_BASE_URL}"
     if [ -d "$API_DIR" ] && [ "$(ls -A "$API_DIR" 2>/dev/null)" ]; then
         cd "${BACKEND_DIR}"
         php vendor/bin/phpunit --configuration phpunit.xml --testsuite api

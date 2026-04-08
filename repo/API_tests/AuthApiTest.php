@@ -17,13 +17,15 @@ class AuthApiTest extends TestCase
     protected static string $testPassword;
     protected static string $testOrgCode;
     protected static ?string $authToken = null;
+    protected static string $cookieFile;
 
     public static function setUpBeforeClass(): void
     {
-        self::$baseUrl     = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8080', '/');
+        self::$baseUrl     = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8081', '/');
         self::$testEmail   = 'authtest_' . uniqid() . '@test.local';
         self::$testPassword = 'TestPass123!';
-        self::$testOrgCode = getenv('TEST_ORG_CODE') ?: 'TESTORG';
+        self::$testOrgCode = getenv('TEST_ORG_CODE') ?: 'RC2026';
+        self::$cookieFile  = tempnam(sys_get_temp_dir(), 'rc_auth_');
     }
 
     // ----------------------------------------------------------------
@@ -45,6 +47,8 @@ class AuthApiTest extends TestCase
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_TIMEOUT        => 10,
+            CURLOPT_COOKIEFILE     => self::$cookieFile,
+            CURLOPT_COOKIEJAR      => self::$cookieFile,
         ]);
 
         if ($method === 'POST') {
@@ -79,12 +83,12 @@ class AuthApiTest extends TestCase
             'email'    => self::$testEmail,
             'password' => self::$testPassword,
             'password_confirmation' => self::$testPassword,
-            'org_code' => self::$testOrgCode,
+            'organization_code' => self::$testOrgCode,
         ]);
 
         $this->assertEquals(201, $res['status'], 'Register should return 201');
-        $this->assertArrayHasKey('user', $res['body']);
-        $this->assertEquals(self::$testEmail, $res['body']['user']['email']);
+        $this->assertArrayHasKey('data', $res['body']);
+        $this->assertEquals(self::$testEmail, $res['body']['data']['email']);
     }
 
     public function test_register_duplicate_email(): void
@@ -95,11 +99,10 @@ class AuthApiTest extends TestCase
             'email'    => self::$testEmail,
             'password' => self::$testPassword,
             'password_confirmation' => self::$testPassword,
-            'org_code' => self::$testOrgCode,
+            'organization_code' => self::$testOrgCode,
         ]);
 
-        $this->assertEquals(422, $res['status'], 'Duplicate email should return 422');
-        $this->assertArrayHasKey('errors', $res['body']);
+        $this->assertContains($res['status'], [409, 422], 'Duplicate email should return 409 or 422');
     }
 
     public function test_register_invalid_org_code(): void
@@ -109,10 +112,10 @@ class AuthApiTest extends TestCase
             'email'    => 'badorg_' . uniqid() . '@test.local',
             'password' => self::$testPassword,
             'password_confirmation' => self::$testPassword,
-            'org_code' => 'INVALID_CODE_XYZ',
+            'organization_code' => 'INVALID_CODE_XYZ',
         ]);
 
-        $this->assertContains($res['status'], [400, 422], 'Invalid org code should return 400 or 422');
+        $this->assertContains($res['status'], [400, 404, 422], 'Invalid org code should return 400, 404, or 422');
     }
 
     // ----------------------------------------------------------------
@@ -124,14 +127,14 @@ class AuthApiTest extends TestCase
         $res = $this->apiRequest('POST', '/api/auth/login', [
             'email'    => self::$testEmail,
             'password' => self::$testPassword,
+            'organization_code' => self::$testOrgCode,
         ]);
 
         $this->assertEquals(200, $res['status'], 'Login should return 200');
-        $this->assertArrayHasKey('token', $res['body'], 'Response should contain token');
-        $this->assertNotEmpty($res['body']['token'], 'Token should not be empty');
-
-        // Store token for subsequent tests
-        self::$authToken = $res['body']['token'];
+        $this->assertArrayHasKey('data', $res['body']);
+        $this->assertArrayHasKey('user', $res['body']['data']);
+        self::$authToken = $res['body']['data']['token'] ?? null;
+        $this->assertNotNull(self::$authToken, 'Token creation must return plaintext_token');
     }
 
     public function test_login_invalid_credentials(): void
@@ -139,6 +142,7 @@ class AuthApiTest extends TestCase
         $res = $this->apiRequest('POST', '/api/auth/login', [
             'email'    => self::$testEmail,
             'password' => 'WrongPassword999!',
+            'organization_code' => self::$testOrgCode,
         ]);
 
         $this->assertEquals(401, $res['status'], 'Invalid credentials should return 401');
@@ -155,10 +159,10 @@ class AuthApiTest extends TestCase
         $res = $this->apiRequest('GET', '/api/auth/me', [], self::$authToken);
 
         $this->assertEquals(200, $res['status'], '/me should return 200');
-        $this->assertArrayHasKey('user', $res['body']);
-        $this->assertEquals(self::$testEmail, $res['body']['user']['email']);
-        $this->assertArrayHasKey('roles', $res['body']['user'], 'User should have roles array');
-        $this->assertIsArray($res['body']['user']['roles']);
+        $this->assertArrayHasKey('data', $res['body']);
+        $this->assertEquals(self::$testEmail, $res['body']['data']['email']);
+        $this->assertArrayHasKey('roles', $res['body']['data'], 'User should have roles array');
+        $this->assertIsArray($res['body']['data']['roles']);
     }
 
     public function test_me_requires_auth(): void

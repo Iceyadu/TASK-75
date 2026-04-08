@@ -11,6 +11,7 @@ class VersionController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->listingService = new ListingService();
     }
 

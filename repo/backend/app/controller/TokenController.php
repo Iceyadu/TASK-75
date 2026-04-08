@@ -11,6 +11,7 @@ class TokenController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->tokenService = new TokenService();
     }
 
@@ -19,7 +20,7 @@ class TokenController extends BaseController
      */
     public function store()
     {
-        validate($this->request->post(), 'app\validate\TokenValidate.create');
+        validate('app\validate\TokenValidate.create')->check($this->request->post());
 
         $result = $this->tokenService->create(
             (int) $this->request->user->id,

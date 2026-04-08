@@ -1,0 +1,4 @@
+<?php
+//000000000000
+ exit();?>
+a:22:{s:2:"id";s:3:"int";s:15:"organization_id";s:3:"int";s:10:"listing_id";s:3:"int";s:12:"passenger_id";s:3:"int";s:9:"driver_id";s:3:"int";s:6:"status";s:6:"string";s:12:"driver_notes";s:6:"string";s:18:"cancel_reason_code";s:6:"string";s:18:"cancel_reason_text";s:6:"string";s:14:"dispute_reason";s:6:"string";s:16:"resolution_notes";s:6:"string";s:18:"resolution_outcome";s:6:"string";s:10:"created_at";s:8:"datetime";s:11:"accepted_at";s:8:"datetime";s:10:"started_at";s:8:"datetime";s:12:"completed_at";s:8:"datetime";s:11:"canceled_at";s:8:"datetime";s:11:"disputed_at";s:8:"datetime";s:11:"resolved_at";s:8:"datetime";s:10:"expires_at";s:8:"datetime";s:3:"_pk";s:2:"id";s:8:"_autoinc";s:2:"id";}

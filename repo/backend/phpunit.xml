@@ -8,10 +8,10 @@
 
     <testsuites>
         <testsuite name="unit">
-            <directory>../../unit_tests</directory>
+            <directory>../unit_tests</directory>
         </testsuite>
         <testsuite name="api">
-            <directory>../../API_tests</directory>
+            <directory>../API_tests</directory>
         </testsuite>
     </testsuites>
 

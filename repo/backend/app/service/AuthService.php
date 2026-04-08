@@ -9,6 +9,7 @@ use app\exception\NotFoundException;
 use app\exception\ValidationException;
 use app\model\Organization;
 use app\model\Role;
+use app\model\ApiToken;
 use app\model\User;
 use app\model\UserSession;
 use think\facade\Session;
@@ -54,7 +55,7 @@ class AuthService
         $session->session_id = session_id() ?: bin2hex(random_bytes(20));
         $session->ip_address = request()->ip();
         $session->user_agent = request()->header('User-Agent', '');
-        $session->expires_at = date('Y-m-d\TH:i:s\Z', strtotime('+24 hours'));
+        $session->expires_at = date('Y-m-d H:i:s', strtotime('+24 hours'));
         $session->save();
 
         return $user;
@@ -85,7 +86,7 @@ class AuthService
             throw new AuthException('Account is disabled', 40102);
         }
 
-        $expiresAt = date('Y-m-d\TH:i:s\Z', strtotime('+24 hours'));
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
 
         // Create session record
         $session = new UserSession();
@@ -99,11 +100,21 @@ class AuthService
         // Start PHP session
         Session::set('user_id', $user->id);
 
+        // Issue bearer token for API clients/tests.
+        $plainToken = generate_token();
+        $apiToken = new ApiToken();
+        $apiToken->user_id = $user->id;
+        $apiToken->name = 'login_token';
+        $apiToken->token_hash = hash('sha256', $plainToken);
+        $apiToken->expires_at = $expiresAt;
+        $apiToken->save();
+
         return [
             'user'               => $user,
             'roles'              => array_map(static function ($role): string {
                 return (string) ($role['slug'] ?? '');
             }, $user->roles()->select()->toArray()),
+            'token'              => $plainToken,
             'session_expires_at' => $expiresAt,
         ];
     }
@@ -116,6 +127,11 @@ class AuthService
         UserSession::where('user_id', $userId)
             ->where('session_id', $sessionId)
             ->delete();
+
+        // Revoke active API tokens on logout.
+        ApiToken::where('user_id', $userId)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => date('Y-m-d H:i:s')]);
 
         Session::clear();
     }

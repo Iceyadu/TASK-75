@@ -10,7 +10,7 @@ class Order extends Model
 
     protected $autoWriteTimestamp = false;
 
-    protected $dateFormat = 'Y-m-d\TH:i:s\Z';
+    protected $dateFormat = 'Y-m-d H:i:s';
 
     /**
      * State machine: maps current status to allowed next statuses.

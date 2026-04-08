@@ -1,0 +1,4 @@
+<?php
+//000000000000
+ exit();?>
+a:24:{s:2:"id";s:3:"int";s:15:"organization_id";s:3:"int";s:7:"user_id";s:3:"int";s:5:"title";s:6:"string";s:11:"description";s:6:"string";s:14:"pickup_address";s:6:"string";s:15:"dropoff_address";s:6:"string";s:11:"rider_count";s:3:"int";s:12:"vehicle_type";s:6:"string";s:13:"baggage_notes";s:6:"string";s:17:"time_window_start";s:8:"datetime";s:15:"time_window_end";s:8:"datetime";s:4:"tags";s:6:"string";s:6:"status";s:6:"string";s:7:"version";s:3:"int";s:10:"view_count";s:3:"int";s:14:"favorite_count";s:3:"int";s:13:"comment_count";s:3:"int";s:16:"last_activity_at";s:8:"datetime";s:18:"data_quality_score";s:5:"float";s:10:"created_at";s:8:"datetime";s:10:"updated_at";s:8:"datetime";s:3:"_pk";s:2:"id";s:8:"_autoinc";s:2:"id";}

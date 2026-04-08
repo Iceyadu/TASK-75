@@ -16,6 +16,7 @@ class ListingController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->listingService    = new ListingService();
         $this->governanceService = new GovernanceService();
     }
@@ -57,7 +58,7 @@ class ListingController extends BaseController
      */
     public function store()
     {
-        validate($this->request->post(), 'app\validate\ListingValidate.create');
+        validate('app\validate\ListingValidate.create')->check($this->request->post());
 
         $listing = $this->listingService->create(
             $this->request->orgId,
@@ -116,7 +117,7 @@ class ListingController extends BaseController
             throw new ForbiddenException('You do not own this listing');
         }
 
-        validate($this->request->post(), 'app\validate\ListingValidate.update');
+        validate('app\validate\ListingValidate.update')->check($this->request->post());
 
         $updated = $this->listingService->update(
             (int) $id,

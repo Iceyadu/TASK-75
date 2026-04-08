@@ -10,7 +10,7 @@ class ModerationQueue extends Model
 
     protected $autoWriteTimestamp = 'datetime';
 
-    protected $dateFormat = 'Y-m-d\TH:i:s\Z';
+    protected $dateFormat = 'Y-m-d H:i:s';
 
     // ---- Scopes ----
 

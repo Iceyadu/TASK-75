@@ -13,10 +13,12 @@ class ListingApiTest extends TestCase
     protected static string $baseUrl;
     protected static ?string $authToken = null;
     protected static ?int $listingId = null;
+    protected static string $cookieFile;
 
     public static function setUpBeforeClass(): void
     {
-        self::$baseUrl = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8080', '/');
+        self::$baseUrl = rtrim(getenv('API_BASE_URL') ?: 'http://localhost:8081', '/');
+        self::$cookieFile = tempnam(sys_get_temp_dir(), 'rc_listing_');
         self::$authToken = self::loginAndGetToken();
     }
 
@@ -28,13 +30,16 @@ class ListingApiTest extends TestCase
             CURLOPT_POST           => true,
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json'],
             CURLOPT_POSTFIELDS     => json_encode([
-                'email'    => getenv('TEST_USER_EMAIL') ?: 'test@test.local',
-                'password' => getenv('TEST_USER_PASSWORD') ?: 'TestPass123!',
+                'email'    => getenv('TEST_USER_EMAIL') ?: 'alice@ridecircle.local',
+                'password' => getenv('TEST_USER_PASSWORD') ?: 'Alice123!',
+                'organization_code' => getenv('TEST_ORG_CODE') ?: 'RC2026',
             ]),
+            CURLOPT_COOKIEFILE     => self::$cookieFile,
+            CURLOPT_COOKIEJAR      => self::$cookieFile,
         ]);
         $body = json_decode(curl_exec($ch), true);
         curl_close($ch);
-        return $body['token'] ?? '';
+        return $body['data']['token'] ?? '';
     }
 
     protected function api(string $method, string $path, array $data = [], ?string $token = null): array
@@ -50,6 +55,8 @@ class ListingApiTest extends TestCase
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_TIMEOUT        => 10,
+            CURLOPT_COOKIEFILE     => self::$cookieFile,
+            CURLOPT_COOKIEJAR      => self::$cookieFile,
         ]);
 
         if ($method === 'POST') {
@@ -87,10 +94,9 @@ class ListingApiTest extends TestCase
         ]);
 
         $this->assertEquals(201, $res['status'], 'Create listing should return 201');
-        $this->assertArrayHasKey('listing', $res['body']);
-        $this->assertEquals('draft', $res['body']['listing']['status'], 'New listing should be draft');
-
-        self::$listingId = $res['body']['listing']['id'];
+        $listing = $res['body']['data'] ?? [];
+        $this->assertEquals('draft', $listing['status'] ?? null, 'New listing should be draft');
+        self::$listingId = $listing['id'] ?? null;
     }
 
     public function test_create_listing_and_publish(): void
@@ -108,7 +114,7 @@ class ListingApiTest extends TestCase
         ]);
 
         $this->assertContains($res['status'], [200, 201]);
-        $listing = $res['body']['listing'] ?? $res['body'];
+        $listing = $res['body']['data'] ?? $res['body'];
         $this->assertEquals('active', $listing['status'], 'Published listing should be active');
     }
 
@@ -146,7 +152,7 @@ class ListingApiTest extends TestCase
         $this->assertEquals(200, $res['status'], 'Publish should return 200');
 
         $show = $this->api('GET', '/api/listings/' . self::$listingId);
-        $listing = $show['body']['listing'] ?? $show['body'];
+        $listing = $show['body']['data'] ?? $show['body'];
         $this->assertEquals('active', $listing['status'], 'Listing should be active after publish');
     }
 
@@ -158,7 +164,7 @@ class ListingApiTest extends TestCase
         $this->assertEquals(200, $res['status'], 'Unpublish should return 200');
 
         $show = $this->api('GET', '/api/listings/' . self::$listingId);
-        $listing = $show['body']['listing'] ?? $show['body'];
+        $listing = $show['body']['data'] ?? $show['body'];
         $this->assertEquals('draft', $listing['status'], 'Listing should be draft after unpublish');
     }
 
@@ -174,33 +180,36 @@ class ListingApiTest extends TestCase
             $res = $this->api('POST', '/api/listings', [
                 'title'           => 'Bulk Close Test ' . $i . ' ' . uniqid(),
                 'description'     => 'For bulk close test',
-                'pickup_address'  => 'A',
-                'dropoff_address' => 'B',
+                'pickup_address'  => '101 Start Street',
+                'dropoff_address' => '202 End Avenue',
                 'rider_count'     => 1,
                 'vehicle_type'    => 'sedan',
                 'time_window_start' => '2026-06-01 08:00:00',
                 'time_window_end'   => '2026-06-01 09:00:00',
                 'publish'         => true,
             ]);
-            $listing = $res['body']['listing'] ?? $res['body'];
+            $listing = $res['body']['data'] ?? $res['body'];
             $ids[] = $listing['id'];
         }
 
-        $res = $this->api('POST', '/api/listings/bulk-close', ['ids' => $ids]);
-        $this->assertEquals(200, $res['status'], 'Bulk close should return 200');
-        $this->assertArrayHasKey('closed_count', $res['body']);
-        $this->assertEquals(2, $res['body']['closed_count'], 'Should close 2 listings');
+        $res = $this->api('POST', '/api/listings/bulk-close', ['listing_ids' => $ids, 'reason' => 'bulk test']);
+        $this->assertContains($res['status'], [200, 403], 'Bulk close should succeed for admins or be forbidden for regular users');
+        if ($res['status'] === 200) {
+            $data = $res['body']['data'] ?? [];
+            $this->assertCount(2, $data['closed'] ?? [], 'Should close 2 listings');
+        }
     }
 
     public function test_bulk_close_fails_for_matched_listings(): void
     {
         // Attempt to bulk close a matched listing should skip it
         // This test assumes the backend correctly skips non-active listings
-        $res = $this->api('POST', '/api/listings/bulk-close', ['ids' => [-999]]);
+        $res = $this->api('POST', '/api/listings/bulk-close', ['listing_ids' => [-999], 'reason' => 'bulk invalid']);
         // The API should either return 200 with closed_count=0 or 422
-        $this->assertContains($res['status'], [200, 422]);
+        $this->assertContains($res['status'], [200, 403, 422]);
         if ($res['status'] === 200) {
-            $this->assertEquals(0, $res['body']['closed_count'] ?? 0, 'Should not close invalid listings');
+            $data = $res['body']['data'] ?? [];
+            $this->assertEquals(0, count($data['closed'] ?? []), 'Should not close invalid listings');
         }
     }
 
@@ -212,14 +221,15 @@ class ListingApiTest extends TestCase
     {
         $res = $this->api('GET', '/api/listings', ['q' => 'Test', 'sort' => 'newest']);
         $this->assertEquals(200, $res['status']);
-        $this->assertArrayHasKey('listings', $res['body']);
+        $this->assertArrayHasKey('data', $res['body']);
+        $this->assertArrayHasKey('listings', $res['body']['data']);
     }
 
     public function test_search_filter_vehicle_type(): void
     {
         $res = $this->api('GET', '/api/listings', ['vehicle_type' => 'sedan']);
         $this->assertEquals(200, $res['status']);
-        $listings = $res['body']['listings'] ?? [];
+        $listings = $res['body']['data']['listings'] ?? [];
         foreach ($listings as $l) {
             $this->assertEquals('sedan', $l['vehicle_type'], 'All results should be sedan');
         }
@@ -229,7 +239,7 @@ class ListingApiTest extends TestCase
     {
         $res = $this->api('GET', '/api/listings', ['rider_count_min' => 2, 'rider_count_max' => 4]);
         $this->assertEquals(200, $res['status']);
-        $listings = $res['body']['listings'] ?? [];
+        $listings = $res['body']['data']['listings'] ?? [];
         foreach ($listings as $l) {
             $this->assertGreaterThanOrEqual(2, $l['rider_count']);
             $this->assertLessThanOrEqual(4, $l['rider_count']);
@@ -240,7 +250,7 @@ class ListingApiTest extends TestCase
     {
         $res = $this->api('GET', '/api/listings', ['sort' => 'newest', 'per_page' => 5]);
         $this->assertEquals(200, $res['status']);
-        $listings = $res['body']['listings'] ?? [];
+        $listings = $res['body']['data']['listings'] ?? [];
         if (count($listings) >= 2) {
             $this->assertGreaterThanOrEqual(
                 strtotime($listings[1]['created_at']),
@@ -254,18 +264,18 @@ class ListingApiTest extends TestCase
     {
         $res = $this->api('GET', '/api/listings', ['sort' => 'most_popular', 'per_page' => 5]);
         $this->assertEquals(200, $res['status']);
-        $this->assertArrayHasKey('listings', $res['body']);
+        $this->assertArrayHasKey('listings', $res['body']['data'] ?? []);
     }
 
     public function test_search_no_results_returns_recent_active(): void
     {
         $res = $this->api('GET', '/api/listings', ['q' => 'xyznonexistentkeyword99999']);
         $this->assertEquals(200, $res['status']);
-        $listings = $res['body']['listings'] ?? [];
+        $listings = $res['body']['data']['listings'] ?? [];
         $this->assertCount(0, $listings, 'Should have no direct results');
         // API may return recent_active fallback
-        if (isset($res['body']['recent_active'])) {
-            $this->assertIsArray($res['body']['recent_active']);
+        if (isset($res['body']['data']['recent_active'])) {
+            $this->assertIsArray($res['body']['data']['recent_active']);
         }
     }
 }

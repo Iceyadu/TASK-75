@@ -14,6 +14,7 @@ class ReviewController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->reviewService = new ReviewService();
     }
 
@@ -45,7 +46,7 @@ class ReviewController extends BaseController
      */
     public function store()
     {
-        validate($this->request->post(), 'app\validate\ReviewValidate.create');
+        validate('app\validate\ReviewValidate.create')->check($this->request->post());
 
         $files = $this->request->file('files') ?? [];
         if (!is_array($files)) {
@@ -79,7 +80,7 @@ class ReviewController extends BaseController
             throw new ForbiddenException('You do not own this review');
         }
 
-        validate($this->request->post(), 'app\validate\ReviewValidate.update');
+        validate('app\validate\ReviewValidate.update')->check($this->request->post());
 
         $updated = $this->reviewService->update(
             (int) $id,

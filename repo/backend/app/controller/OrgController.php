@@ -13,6 +13,7 @@ class OrgController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->auditService = new AuditService();
     }
 

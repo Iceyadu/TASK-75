@@ -55,7 +55,7 @@ class OrderService
             throw new BusinessException('An active order already exists for this listing', 40901, 409);
         }
 
-        $now = date('Y-m-d\TH:i:s\Z');
+        $now = date('Y-m-d H:i:s');
 
         $order = new Order();
         $order->organization_id = $orgId;
@@ -106,7 +106,7 @@ class OrderService
 
         $oldStatus = $order->status;
         $order->status      = 'accepted';
-        $order->accepted_at = date('Y-m-d\TH:i:s\Z');
+        $order->accepted_at = date('Y-m-d H:i:s');
         $order->save();
 
         $this->auditService->log(
@@ -140,7 +140,7 @@ class OrderService
 
         $oldStatus = $order->status;
         $order->status     = 'in_progress';
-        $order->started_at = date('Y-m-d\TH:i:s\Z');
+        $order->started_at = date('Y-m-d H:i:s');
         $order->save();
 
         // Update listing status
@@ -181,7 +181,7 @@ class OrderService
 
         $oldStatus = $order->status;
         $order->status       = 'completed';
-        $order->completed_at = date('Y-m-d\TH:i:s\Z');
+        $order->completed_at = date('Y-m-d H:i:s');
         $order->save();
 
         // Update listing status
@@ -259,7 +259,7 @@ class OrderService
         // Rule 5: Apply cancellation
         $oldStatus = $order->status;
         $order->status             = 'canceled';
-        $order->canceled_at        = date('Y-m-d\TH:i:s\Z');
+        $order->canceled_at        = date('Y-m-d H:i:s');
         $order->cancel_reason_code = $reasonCode;
         $order->cancel_reason_text = $reasonText;
         $order->save();
@@ -313,7 +313,7 @@ class OrderService
 
         $oldStatus = $order->status;
         $order->status         = 'disputed';
-        $order->disputed_at    = date('Y-m-d\TH:i:s\Z');
+        $order->disputed_at    = date('Y-m-d H:i:s');
         $order->dispute_reason = $reason;
         $order->save();
 
@@ -354,7 +354,7 @@ class OrderService
 
         $oldStatus = $order->status;
         $order->status             = 'resolved';
-        $order->resolved_at        = date('Y-m-d\TH:i:s\Z');
+        $order->resolved_at        = date('Y-m-d H:i:s');
         $order->resolution_notes   = $resolution;
         $order->resolution_outcome = $outcome;
         $order->save();
@@ -384,7 +384,7 @@ class OrderService
      */
     public function expirePendingOrders(): int
     {
-        $cutoff = date('Y-m-d\TH:i:s\Z', strtotime('-30 minutes'));
+        $cutoff = date('Y-m-d H:i:s', strtotime('-30 minutes'));
 
         $expiredOrders = Order::where('status', 'pending_match')
             ->where('created_at', '<', $cutoff)

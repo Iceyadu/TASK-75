@@ -12,6 +12,7 @@ class AuthController extends BaseController
 
     public function __construct()
     {
+        parent::__construct();
         $this->authService = new AuthService();
     }
 
@@ -22,7 +23,7 @@ class AuthController extends BaseController
     {
         $payload = $this->request->post();
 
-        validate($payload, 'app\validate\AuthValidate.register');
+        validate('app\validate\AuthValidate.register')->check($payload);
 
         $user = $this->authService->register($payload);
 
@@ -38,7 +39,7 @@ class AuthController extends BaseController
      */
     public function login()
     {
-        validate($this->request->post(), 'app\validate\AuthValidate.login');
+        validate('app\validate\AuthValidate.login')->check($this->request->post());
 
         $result = $this->authService->login(
             $this->request->post('email'),
@@ -54,6 +55,7 @@ class AuthController extends BaseController
             'data'    => [
                 'user'               => $result['user']->toArray(),
                 'roles'              => $result['roles'],
+                'token'              => $result['token'],
                 'session_expires_at' => $result['session_expires_at'],
             ],
         ], 200);

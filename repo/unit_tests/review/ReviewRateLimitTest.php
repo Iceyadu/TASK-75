@@ -77,7 +77,8 @@ class ReviewRateLimitTest extends TestCase
         $afterWindow = $now + self::WINDOW_SECONDS + 1;
         $this->checkRateLimit(1, $afterWindow); // Should succeed
 
-        // Old timestamps should be pruned; only the new one remains
-        $this->assertCount(1, $this->cache['rate_limit:reviews:1']);
+        // Rolling-window behavior keeps attempts still inside the last hour.
+        // At this timestamp, the attempts at +60 and +120 seconds remain.
+        $this->assertCount(3, $this->cache['rate_limit:reviews:1']);
     }
 }
