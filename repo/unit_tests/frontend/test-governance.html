@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Governance Dashboard Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Mock RCAuth
+ */
+var RCAuth = {
+    _user: null,
+    setUser: function(u) { this._user = u; },
+    getUser: function() { return this._user; },
+    hasRole: function(role) { return this._user && this._user.roles && this._user.roles.indexOf(role) !== -1; },
+    hasPermission: function(perm) {
+        if (!this._user) return false;
+        if (this.hasRole('admin')) return true;
+        return false;
+    }
+};
+
+/**
+ * Governance Dashboard UI builder
+ */
+var GovernanceUI = {
+    checkAccess: function() {
+        if (!RCAuth.hasPermission('governance.view_dashboard')) {
+            return { allowed: false, html: '<div class="rc-forbidden" style="text-align:center;padding:40px;color:#FF5722;"><h3>Access Denied</h3><p>Only administrators can access the governance dashboard.</p></div>' };
+        }
+        return { allowed: true, html: '' };
+    },
+
+    renderMetricCard: function(metric) {
+        var colorMap = {
+            'listing_completeness': '#009688',
+            'dedup_ratio': '#2196F3',
+            'missing_value_rate': '#FF9800',
+            'counter_drift': '#9C27B0',
+            'queue_depth': '#F44336',
+            'stale_listing_rate': '#795548'
+        };
+        var color = colorMap[metric.key] || '#666';
+        return '<div class="rc-metric-card layui-card" style="display:inline-block;width:200px;margin:8px;">' +
+            '<div class="layui-card-header" style="color:' + color + ';font-weight:bold;">' + metric.label + '</div>' +
+            '<div class="layui-card-body" style="text-align:center;padding:20px;">' +
+            '<div class="rc-metric-value" style="font-size:28px;font-weight:bold;color:' + color + ';">' + metric.value + '</div>' +
+            '<div class="rc-metric-unit" style="font-size:12px;color:#999;">' + (metric.unit || '') + '</div>' +
+            '</div></div>';
+    },
+
+    renderMetricsCards: function(metrics) {
+        if (!metrics || metrics.length === 0) {
+            return '<div class="rc-empty-metrics" style="text-align:center;padding:30px;color:#999;">' +
+                '<p>Data quality metrics will appear after the first nightly governance job runs.</p></div>';
+        }
+        var self = this;
+        return '<div class="rc-metrics-grid" style="display:flex;flex-wrap:wrap;gap:12px;">' +
+            metrics.map(function(m) { return self.renderMetricCard(m); }).join('') + '</div>';
+    },
+
+    renderLineageRow: function(run) {
+        var html = '<div class="rc-lineage-row" data-run-id="' + run.run_id + '" style="border:1px solid #e6e6e6;margin-bottom:8px;border-radius:4px;">';
+        html += '<div class="rc-lineage-summary" style="padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">';
+        html += '<div><strong>' + run.job_name + '</strong> &mdash; ' + run.run_id.substring(0, 8) + '...</div>';
+        html += '<div style="color:#999;font-size:12px;">' + run.executed_at + ' &middot; In: ' + run.input_count + ' / Out: ' + run.output_count + ' / Removed: ' + run.removed_count + '</div>';
+        html += '<span class="rc-expand-icon" style="font-size:18px;">&#9654;</span>';
+        html += '</div>';
+        // Expandable detail
+        html += '<div class="rc-lineage-detail" style="display:none;padding:0 12px 12px 12px;border-top:1px solid #f0f0f0;">';
+        if (run.steps && run.steps.length) {
+            html += '<table style="width:100%;font-size:13px;"><tr><th>Step</th><th>Input</th><th>Output</th><th>Removed</th></tr>';
+            run.steps.forEach(function(step) {
+                html += '<tr><td>' + step.name + '</td><td>' + step.input + '</td><td>' + step.output + '</td><td>' + step.removed + '</td></tr>';
+            });
+            html += '</table>';
+        }
+        html += '</div></div>';
+        return html;
+    },
+
+    renderAuditPiiToggle: function(hasPerm) {
+        var html = '<div class="rc-pii-toggle" style="margin-bottom:16px;">';
+        if (hasPerm) {
+            html += '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
+                '<input type="checkbox" class="rc-unmask-toggle" value="1"> Show unmasked data</label>';
+        } else {
+            html += '<span style="color:#999;font-size:12px;">PII data is masked. You do not have permission to unmask.</span>';
+        }
+        html += '</div>';
+        return html;
+    },
+
+    maskValue: function(value, unmasked) {
+        if (unmasked) return value;
+        if (!value) return '***';
+        // Mask all but last 4 chars, or fully mask if short
+        if (value.length <= 4) return '****';
+        return '****' + value.substring(value.length - 4);
+    }
+};
+
+// ---- Tests ----
+
+TestHarness.suite('Governance - Access Control');
+
+TestHarness.test('test_forbidden_for_non_admin', function() {
+    RCAuth.setUser({ id: 1, name: 'Alice', roles: ['user'] });
+    var access = GovernanceUI.checkAccess();
+    TestHarness.assertFalse(access.allowed, 'Regular user should be denied');
+    TestHarness.assertContains(access.html, 'Access Denied', 'Should show access denied');
+
+    RCAuth.setUser({ id: 2, name: 'Mod', roles: ['user', 'moderator'] });
+    var access2 = GovernanceUI.checkAccess();
+    TestHarness.assertFalse(access2.allowed, 'Moderator should be denied');
+
+    RCAuth.setUser({ id: 3, name: 'Admin', roles: ['user', 'admin'] });
+    var access3 = GovernanceUI.checkAccess();
+    TestHarness.assertTrue(access3.allowed, 'Admin should be allowed');
+});
+
+TestHarness.suite('Governance - Metrics Cards');
+
+TestHarness.test('test_metrics_cards_render', function() {
+    var metrics = [
+        { key: 'listing_completeness', label: 'Listing Completeness', value: '94.2%', unit: 'of listings' },
+        { key: 'dedup_ratio', label: 'Dedup Ratio', value: '0.03', unit: 'duplicate rate' },
+        { key: 'queue_depth', label: 'Queue Depth', value: '12', unit: 'items pending' }
+    ];
+    var html = GovernanceUI.renderMetricsCards(metrics);
+    TestHarness.assertContains(html, 'rc-metrics-grid', 'Should have metrics grid');
+    TestHarness.assertContains(html, 'Listing Completeness', 'Should show first metric label');
+    TestHarness.assertContains(html, '94.2%', 'Should show first metric value');
+    TestHarness.assertContains(html, 'Dedup Ratio', 'Should show second metric label');
+    TestHarness.assertContains(html, 'Queue Depth', 'Should show third metric label');
+    TestHarness.assertContains(html, '#009688', 'Listing completeness should use teal color');
+    TestHarness.assertContains(html, '#F44336', 'Queue depth should use red color');
+});
+
+TestHarness.test('test_empty_state_before_first_run', function() {
+    var html = GovernanceUI.renderMetricsCards([]);
+    TestHarness.assertContains(html, 'rc-empty-metrics', 'Should have empty metrics class');
+    TestHarness.assertContains(html, 'after the first nightly governance job runs', 'Should explain why empty');
+});
+
+TestHarness.suite('Governance - Lineage');
+
+TestHarness.test('test_lineage_expandable_rows', function() {
+    var run = {
+        run_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        job_name: 'governance:dedup',
+        executed_at: '2026-04-07 02:00:00',
+        input_count: 5000,
+        output_count: 4920,
+        removed_count: 80,
+        steps: [
+            { name: 'Load events', input: 5000, output: 5000, removed: 0 },
+            { name: 'Dedup by window', input: 5000, output: 4920, removed: 80 }
+        ]
+    };
+    var html = GovernanceUI.renderLineageRow(run);
+    TestHarness.assertContains(html, 'data-run-id="a1b2c3d4', 'Should have run ID data attribute');
+    TestHarness.assertContains(html, 'governance:dedup', 'Should show job name');
+    TestHarness.assertContains(html, 'a1b2c3d4', 'Should show truncated run ID');
+    TestHarness.assertContains(html, 'rc-lineage-detail', 'Should have expandable detail section');
+    TestHarness.assertContains(html, 'display:none', 'Detail should be hidden by default');
+    TestHarness.assertContains(html, 'Load events', 'Should show step name');
+    TestHarness.assertContains(html, 'Dedup by window', 'Should show second step');
+    TestHarness.assertContains(html, 'rc-expand-icon', 'Should have expand toggle icon');
+});
+
+TestHarness.suite('Governance - Audit PII Toggle');
+
+TestHarness.test('test_audit_pii_toggle', function() {
+    var htmlWithPerm = GovernanceUI.renderAuditPiiToggle(true);
+    TestHarness.assertContains(htmlWithPerm, 'rc-unmask-toggle', 'Should show toggle checkbox when permitted');
+    TestHarness.assertContains(htmlWithPerm, 'Show unmasked data', 'Should show toggle label');
+
+    var htmlNoPerm = GovernanceUI.renderAuditPiiToggle(false);
+    TestHarness.assertNotContains(htmlNoPerm, 'rc-unmask-toggle', 'Should NOT show toggle when not permitted');
+    TestHarness.assertContains(htmlNoPerm, 'do not have permission', 'Should explain no permission');
+});
+
+TestHarness.test('test_audit_masked_by_default', function() {
+    var masked = GovernanceUI.maskValue('user123@example.com', false);
+    TestHarness.assertNotContains(masked, 'user123', 'Masked value should not show full content');
+    TestHarness.assertContains(masked, '****', 'Masked value should contain asterisks');
+});
+
+TestHarness.test('test_audit_unmask_requires_permission', function() {
+    var unmasked = GovernanceUI.maskValue('user123@example.com', true);
+    TestHarness.assertEqual(unmasked, 'user123@example.com', 'Unmasked should show full value');
+
+    var masked = GovernanceUI.maskValue('user123@example.com', false);
+    TestHarness.assertTrue(masked !== 'user123@example.com', 'Without permission, value should be masked');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

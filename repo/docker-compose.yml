@@ -1,0 +1,63 @@
+# RideCircle Carpool Marketplace -- Docker Compose
+# Offline-first deployment: all services run locally, no external dependencies.
+
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ridecircle-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+      MYSQL_DATABASE: ${DB_DATABASE:-ridecircle}
+      MYSQL_USER: ${DB_USERNAME:-ridecircle}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+    ports:
+      - "${DB_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/database:/docker-entrypoint-initdb.d
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ridecircle-backend
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=${DB_DATABASE:-ridecircle}
+      - DB_USERNAME=${DB_USERNAME:-ridecircle}
+      - DB_PASSWORD=${DB_PASSWORD:-change_me_in_production}
+    ports:
+      - "${BACKEND_PORT:-8081}:8080"
+    volumes:
+      - ./backend:/var/www/html
+      - media_storage:${MEDIA_STORAGE_PATH:-/var/ridecircle/media}
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ridecircle-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+
+volumes:
+  mysql_data:
+    driver: local
+  media_storage:
+    driver: local

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Listing Form Validation Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Listing form validation logic, extracted from the listing create/edit page module.
+ * Mirrors the client-side validation that the real form performs.
+ */
+var ListingFormValidator = (function() {
+    var TITLE_MIN = 5;
+    var TITLE_MAX = 200;
+    var DESCRIPTION_MAX = 2000;
+    var BAGGAGE_NOTES_MAX = 500;
+    var RIDER_COUNT_MIN = 1;
+    var RIDER_COUNT_MAX = 6;
+    var TAGS_MAX = 10;
+    var VALID_VEHICLE_TYPES = ['sedan', 'suv', 'van'];
+
+    function validateField(name, value, isPublish) {
+        var errors = [];
+
+        switch (name) {
+            case 'title':
+                if (!value || !value.trim()) {
+                    errors.push('Title is required');
+                } else if (value.trim().length < TITLE_MIN) {
+                    errors.push('Title must be at least ' + TITLE_MIN + ' characters');
+                } else if (value.trim().length > TITLE_MAX) {
+                    errors.push('Title must be at most ' + TITLE_MAX + ' characters');
+                }
+                break;
+
+            case 'pickup_address':
+                if (isPublish && (!value || !value.trim())) {
+                    errors.push('Pickup address is required');
+                }
+                break;
+
+            case 'dropoff_address':
+                if (isPublish && (!value || !value.trim())) {
+                    errors.push('Drop-off address is required');
+                }
+                break;
+
+            case 'rider_count':
+                var count = parseInt(value, 10);
+                if (isPublish && (isNaN(count) || count < RIDER_COUNT_MIN || count > RIDER_COUNT_MAX)) {
+                    errors.push('Rider count must be between ' + RIDER_COUNT_MIN + ' and ' + RIDER_COUNT_MAX);
+                }
+                break;
+
+            case 'vehicle_type':
+                if (isPublish && (!value || VALID_VEHICLE_TYPES.indexOf(value) === -1)) {
+                    errors.push('Vehicle type is required');
+                }
+                break;
+
+            case 'description':
+                if (value && value.length > DESCRIPTION_MAX) {
+                    errors.push('Description must be at most ' + DESCRIPTION_MAX + ' characters');
+                }
+                break;
+
+            case 'baggage_notes':
+                if (value && value.length > BAGGAGE_NOTES_MAX) {
+                    errors.push('Baggage notes must be at most ' + BAGGAGE_NOTES_MAX + ' characters');
+                }
+                break;
+
+            case 'tags':
+                if (value && Array.isArray(value) && value.length > TAGS_MAX) {
+                    errors.push('Maximum ' + TAGS_MAX + ' tags allowed');
+                }
+                break;
+
+            case 'time_window':
+                if (isPublish && value) {
+                    if (value.start && value.end) {
+                        var startDate = new Date(value.start);
+                        var endDate = new Date(value.end);
+                        if (endDate <= startDate) {
+                            errors.push('Time window end must be after start');
+                        }
+                    } else {
+                        if (!value.start) errors.push('Time window start is required');
+                        if (!value.end) errors.push('Time window end is required');
+                    }
+                }
+                break;
+        }
+        return errors;
+    }
+
+    function validateAll(data, isPublish) {
+        var allErrors = {};
+        var fields = ['title', 'pickup_address', 'dropoff_address', 'rider_count',
+                      'vehicle_type', 'description', 'baggage_notes', 'tags', 'time_window'];
+        fields.forEach(function(field) {
+            var val = data[field];
+            var errs = validateField(field, val, isPublish);
+            if (errs.length > 0) allErrors[field] = errs;
+        });
+        return allErrors;
+    }
+
+    return {
+        validateField: validateField,
+        validateAll: validateAll,
+        TITLE_MIN: TITLE_MIN,
+        TITLE_MAX: TITLE_MAX,
+        DESCRIPTION_MAX: DESCRIPTION_MAX,
+        BAGGAGE_NOTES_MAX: BAGGAGE_NOTES_MAX,
+        RIDER_COUNT_MIN: RIDER_COUNT_MIN,
+        RIDER_COUNT_MAX: RIDER_COUNT_MAX,
+        TAGS_MAX: TAGS_MAX
+    };
+})();
+
+// ---- Tests ----
+
+TestHarness.suite('Listing Form - Title Validation');
+
+TestHarness.test('test_title_required', function() {
+    var errs = ListingFormValidator.validateField('title', '', true);
+    TestHarness.assertTrue(errs.length > 0, 'Empty title should produce error');
+    TestHarness.assertContains(errs[0], 'required');
+});
+
+TestHarness.test('test_title_min_5_chars', function() {
+    var errs = ListingFormValidator.validateField('title', 'Abc', true);
+    TestHarness.assertTrue(errs.length > 0, 'Short title should produce error');
+    TestHarness.assertContains(errs[0], 'at least 5');
+
+    var ok = ListingFormValidator.validateField('title', 'Hello', true);
+    TestHarness.assertEqual(ok.length, 0, 'Exactly 5 chars should be valid');
+});
+
+TestHarness.test('test_title_max_200_chars', function() {
+    var longTitle = '';
+    for (var i = 0; i < 201; i++) longTitle += 'A';
+    var errs = ListingFormValidator.validateField('title', longTitle, true);
+    TestHarness.assertTrue(errs.length > 0, '201-char title should produce error');
+    TestHarness.assertContains(errs[0], 'at most 200');
+
+    var exactTitle = '';
+    for (var j = 0; j < 200; j++) exactTitle += 'B';
+    var ok = ListingFormValidator.validateField('title', exactTitle, true);
+    TestHarness.assertEqual(ok.length, 0, 'Exactly 200 chars should be valid');
+});
+
+TestHarness.suite('Listing Form - Address Validation');
+
+TestHarness.test('test_pickup_address_required', function() {
+    var errs = ListingFormValidator.validateField('pickup_address', '', true);
+    TestHarness.assertTrue(errs.length > 0, 'Empty pickup address should produce error on publish');
+    TestHarness.assertContains(errs[0], 'required');
+});
+
+TestHarness.test('test_dropoff_address_required', function() {
+    var errs = ListingFormValidator.validateField('dropoff_address', '', true);
+    TestHarness.assertTrue(errs.length > 0, 'Empty dropoff address should produce error on publish');
+    TestHarness.assertContains(errs[0], 'required');
+});
+
+TestHarness.suite('Listing Form - Rider Count and Vehicle Type');
+
+TestHarness.test('test_rider_count_min_1_max_6', function() {
+    var err0 = ListingFormValidator.validateField('rider_count', '0', true);
+    TestHarness.assertTrue(err0.length > 0, 'Rider count 0 should fail');
+
+    var err7 = ListingFormValidator.validateField('rider_count', '7', true);
+    TestHarness.assertTrue(err7.length > 0, 'Rider count 7 should fail');
+
+    var ok1 = ListingFormValidator.validateField('rider_count', '1', true);
+    TestHarness.assertEqual(ok1.length, 0, 'Rider count 1 should pass');
+
+    var ok6 = ListingFormValidator.validateField('rider_count', '6', true);
+    TestHarness.assertEqual(ok6.length, 0, 'Rider count 6 should pass');
+
+    var ok3 = ListingFormValidator.validateField('rider_count', '3', true);
+    TestHarness.assertEqual(ok3.length, 0, 'Rider count 3 should pass');
+});
+
+TestHarness.test('test_vehicle_type_required', function() {
+    var errs = ListingFormValidator.validateField('vehicle_type', '', true);
+    TestHarness.assertTrue(errs.length > 0, 'Empty vehicle type should produce error on publish');
+
+    var errInvalid = ListingFormValidator.validateField('vehicle_type', 'truck', true);
+    TestHarness.assertTrue(errInvalid.length > 0, 'Invalid vehicle type should produce error');
+
+    var okSedan = ListingFormValidator.validateField('vehicle_type', 'sedan', true);
+    TestHarness.assertEqual(okSedan.length, 0, 'sedan should be valid');
+
+    var okSuv = ListingFormValidator.validateField('vehicle_type', 'suv', true);
+    TestHarness.assertEqual(okSuv.length, 0, 'suv should be valid');
+
+    var okVan = ListingFormValidator.validateField('vehicle_type', 'van', true);
+    TestHarness.assertEqual(okVan.length, 0, 'van should be valid');
+});
+
+TestHarness.suite('Listing Form - Time Window');
+
+TestHarness.test('test_time_window_end_after_start', function() {
+    var errBefore = ListingFormValidator.validateField('time_window', {
+        start: '2026-04-10T14:00:00',
+        end: '2026-04-10T13:00:00'
+    }, true);
+    TestHarness.assertTrue(errBefore.length > 0, 'End before start should fail');
+    TestHarness.assertContains(errBefore[0], 'after start');
+
+    var errSame = ListingFormValidator.validateField('time_window', {
+        start: '2026-04-10T14:00:00',
+        end: '2026-04-10T14:00:00'
+    }, true);
+    TestHarness.assertTrue(errSame.length > 0, 'Same start/end should fail');
+
+    var ok = ListingFormValidator.validateField('time_window', {
+        start: '2026-04-10T14:00:00',
+        end: '2026-04-10T15:00:00'
+    }, true);
+    TestHarness.assertEqual(ok.length, 0, 'End after start should pass');
+});
+
+TestHarness.suite('Listing Form - Text Length Limits');
+
+TestHarness.test('test_description_max_2000_chars', function() {
+    var longDesc = '';
+    for (var i = 0; i < 2001; i++) longDesc += 'X';
+    var errs = ListingFormValidator.validateField('description', longDesc, true);
+    TestHarness.assertTrue(errs.length > 0, '2001-char description should fail');
+
+    var exactDesc = '';
+    for (var j = 0; j < 2000; j++) exactDesc += 'Y';
+    var ok = ListingFormValidator.validateField('description', exactDesc, true);
+    TestHarness.assertEqual(ok.length, 0, '2000-char description should pass');
+});
+
+TestHarness.test('test_baggage_notes_max_500_chars', function() {
+    var longNotes = '';
+    for (var i = 0; i < 501; i++) longNotes += 'Z';
+    var errs = ListingFormValidator.validateField('baggage_notes', longNotes, true);
+    TestHarness.assertTrue(errs.length > 0, '501-char baggage notes should fail');
+
+    var exactNotes = '';
+    for (var j = 0; j < 500; j++) exactNotes += 'W';
+    var ok = ListingFormValidator.validateField('baggage_notes', exactNotes, true);
+    TestHarness.assertEqual(ok.length, 0, '500-char baggage notes should pass');
+});
+
+TestHarness.suite('Listing Form - Tags');
+
+TestHarness.test('test_tags_max_10', function() {
+    var tooMany = ['a','b','c','d','e','f','g','h','i','j','k'];
+    var errs = ListingFormValidator.validateField('tags', tooMany, true);
+    TestHarness.assertTrue(errs.length > 0, '11 tags should fail');
+
+    var exact10 = ['a','b','c','d','e','f','g','h','i','j'];
+    var ok = ListingFormValidator.validateField('tags', exact10, true);
+    TestHarness.assertEqual(ok.length, 0, '10 tags should pass');
+});
+
+TestHarness.suite('Listing Form - Draft vs Publish');
+
+TestHarness.test('test_draft_save_does_not_require_publish_fields', function() {
+    // Draft: only title is required (always required), address/vehicle/rider not required
+    var draftData = {
+        title: 'My Draft Ride',
+        pickup_address: '',
+        dropoff_address: '',
+        rider_count: null,
+        vehicle_type: '',
+        description: '',
+        baggage_notes: '',
+        tags: [],
+        time_window: null
+    };
+    var errors = ListingFormValidator.validateAll(draftData, false);
+    TestHarness.assertEqual(Object.keys(errors).length, 0, 'Draft with only title should have no errors');
+});
+
+TestHarness.test('test_publish_requires_all_fields', function() {
+    var publishData = {
+        title: '',
+        pickup_address: '',
+        dropoff_address: '',
+        rider_count: null,
+        vehicle_type: '',
+        description: '',
+        baggage_notes: '',
+        tags: [],
+        time_window: null
+    };
+    var errors = ListingFormValidator.validateAll(publishData, true);
+    TestHarness.assertTrue(Object.keys(errors).length >= 3, 'Publish with empty fields should have multiple errors');
+    TestHarness.assertTrue('title' in errors, 'Title error should exist');
+    TestHarness.assertTrue('pickup_address' in errors, 'Pickup address error should exist');
+    TestHarness.assertTrue('dropoff_address' in errors, 'Dropoff address error should exist');
+    TestHarness.assertTrue('vehicle_type' in errors, 'Vehicle type error should exist');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

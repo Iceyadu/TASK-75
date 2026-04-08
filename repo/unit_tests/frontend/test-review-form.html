@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Review Form Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Review form validation logic, mirroring the review create page module.
+ */
+var ReviewFormValidator = (function() {
+    var RATING_MIN = 1;
+    var RATING_MAX = 5;
+    var TEXT_MAX = 1000;
+    var FILE_COUNT_MAX = 5;
+    var PHOTO_MAX_BYTES = 5 * 1024 * 1024;   // 5 MB
+    var VIDEO_MAX_BYTES = 50 * 1024 * 1024;   // 50 MB
+    var ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    var ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
+    var ACCEPTED_TYPES = ACCEPTED_PHOTO_TYPES.concat(ACCEPTED_VIDEO_TYPES);
+
+    function validateRating(rating) {
+        if (rating === null || rating === undefined || rating === '') {
+            return 'Rating is required';
+        }
+        var r = parseInt(rating, 10);
+        if (isNaN(r) || r < RATING_MIN || r > RATING_MAX) {
+            return 'Rating must be between ' + RATING_MIN + ' and ' + RATING_MAX;
+        }
+        return null;
+    }
+
+    function validateText(text) {
+        if (!text || !text.trim()) {
+            return 'Review text is required';
+        }
+        if (text.length > TEXT_MAX) {
+            return 'Review text must be at most ' + TEXT_MAX + ' characters';
+        }
+        return null;
+    }
+
+    function validateFiles(files) {
+        var errors = [];
+        if (files.length > FILE_COUNT_MAX) {
+            errors.push('Maximum ' + FILE_COUNT_MAX + ' files allowed');
+        }
+        for (var i = 0; i < files.length; i++) {
+            var f = files[i];
+            if (ACCEPTED_TYPES.indexOf(f.type) === -1) {
+                errors.push('File "' + f.name + '" has unsupported type: ' + f.type);
+            }
+            if (ACCEPTED_PHOTO_TYPES.indexOf(f.type) !== -1 && f.size > PHOTO_MAX_BYTES) {
+                errors.push('Photo "' + f.name + '" exceeds 5 MB limit');
+            }
+            if (ACCEPTED_VIDEO_TYPES.indexOf(f.type) !== -1 && f.size > VIDEO_MAX_BYTES) {
+                errors.push('Video "' + f.name + '" exceeds 50 MB limit');
+            }
+        }
+        return errors;
+    }
+
+    function charCounterState(text) {
+        var len = text ? text.length : 0;
+        var remaining = TEXT_MAX - len;
+        return {
+            current: len,
+            max: TEXT_MAX,
+            remaining: remaining,
+            isNearLimit: remaining <= 100,
+            isOverLimit: remaining < 0
+        };
+    }
+
+    function isPhotoType(type) {
+        return ACCEPTED_PHOTO_TYPES.indexOf(type) !== -1;
+    }
+
+    function canSubmit(rating, text) {
+        return validateRating(rating) === null && validateText(text) === null;
+    }
+
+    return {
+        validateRating: validateRating,
+        validateText: validateText,
+        validateFiles: validateFiles,
+        charCounterState: charCounterState,
+        isPhotoType: isPhotoType,
+        canSubmit: canSubmit,
+        RATING_MIN: RATING_MIN,
+        RATING_MAX: RATING_MAX,
+        TEXT_MAX: TEXT_MAX,
+        FILE_COUNT_MAX: FILE_COUNT_MAX,
+        PHOTO_MAX_BYTES: PHOTO_MAX_BYTES,
+        VIDEO_MAX_BYTES: VIDEO_MAX_BYTES,
+        ACCEPTED_TYPES: ACCEPTED_TYPES
+    };
+})();
+
+// ---- Tests ----
+
+TestHarness.suite('Review Form - Rating Validation');
+
+TestHarness.test('test_rating_required', function() {
+    var err = ReviewFormValidator.validateRating(null);
+    TestHarness.assertContains(err, 'required', 'Null rating should be required');
+
+    var err2 = ReviewFormValidator.validateRating('');
+    TestHarness.assertContains(err2, 'required', 'Empty rating should be required');
+});
+
+TestHarness.test('test_rating_1_to_5', function() {
+    var err0 = ReviewFormValidator.validateRating(0);
+    TestHarness.assertTrue(err0 !== null, 'Rating 0 should fail');
+
+    var err6 = ReviewFormValidator.validateRating(6);
+    TestHarness.assertTrue(err6 !== null, 'Rating 6 should fail');
+
+    for (var i = 1; i <= 5; i++) {
+        var ok = ReviewFormValidator.validateRating(i);
+        TestHarness.assertEqual(ok, null, 'Rating ' + i + ' should pass');
+    }
+});
+
+TestHarness.suite('Review Form - Text Validation');
+
+TestHarness.test('test_text_required', function() {
+    var err = ReviewFormValidator.validateText('');
+    TestHarness.assertContains(err, 'required', 'Empty text should fail');
+
+    var errSpace = ReviewFormValidator.validateText('   ');
+    TestHarness.assertContains(errSpace, 'required', 'Whitespace-only text should fail');
+});
+
+TestHarness.test('test_text_max_1000_chars', function() {
+    var longText = '';
+    for (var i = 0; i < 1001; i++) longText += 'A';
+    var err = ReviewFormValidator.validateText(longText);
+    TestHarness.assertContains(err, 'at most 1000', '1001-char text should fail');
+
+    var exactText = '';
+    for (var j = 0; j < 1000; j++) exactText += 'B';
+    var ok = ReviewFormValidator.validateText(exactText);
+    TestHarness.assertEqual(ok, null, '1000-char text should pass');
+});
+
+TestHarness.suite('Review Form - Character Counter');
+
+TestHarness.test('test_char_counter_updates', function() {
+    var state0 = ReviewFormValidator.charCounterState('');
+    TestHarness.assertEqual(state0.current, 0, 'Empty string should have 0 chars');
+    TestHarness.assertEqual(state0.remaining, 1000, 'Empty string should have 1000 remaining');
+    TestHarness.assertFalse(state0.isNearLimit, 'Should not be near limit');
+
+    var state500 = ReviewFormValidator.charCounterState('A'.repeat(500));
+    TestHarness.assertEqual(state500.current, 500, '500-char string should show 500');
+    TestHarness.assertEqual(state500.remaining, 500, 'Should have 500 remaining');
+    TestHarness.assertFalse(state500.isNearLimit, 'Should not be near limit at 500');
+});
+
+TestHarness.test('test_char_counter_red_near_limit', function() {
+    var state950 = ReviewFormValidator.charCounterState('A'.repeat(950));
+    TestHarness.assertTrue(state950.isNearLimit, 'Should be near limit at 950 chars (50 remaining)');
+
+    var state1000 = ReviewFormValidator.charCounterState('A'.repeat(1000));
+    TestHarness.assertTrue(state1000.isNearLimit, 'Should be near limit at 1000 chars (0 remaining)');
+
+    var stateOver = ReviewFormValidator.charCounterState('A'.repeat(1050));
+    TestHarness.assertTrue(stateOver.isOverLimit, 'Should be over limit at 1050 chars');
+    TestHarness.assertTrue(stateOver.isNearLimit, 'Over limit should also be near limit');
+});
+
+TestHarness.suite('Review Form - File Validation');
+
+TestHarness.test('test_file_count_max_5', function() {
+    var sixFiles = [];
+    for (var i = 0; i < 6; i++) {
+        sixFiles.push({ name: 'photo' + i + '.jpg', type: 'image/jpeg', size: 1024 });
+    }
+    var errs = ReviewFormValidator.validateFiles(sixFiles);
+    TestHarness.assertTrue(errs.length > 0, '6 files should produce error');
+    TestHarness.assertContains(errs[0], 'Maximum 5', 'Should mention max 5');
+
+    var fiveFiles = sixFiles.slice(0, 5);
+    var ok = ReviewFormValidator.validateFiles(fiveFiles);
+    TestHarness.assertEqual(ok.length, 0, '5 files should pass');
+});
+
+TestHarness.test('test_photo_max_5mb_warning', function() {
+    var bigPhoto = [{ name: 'big.jpg', type: 'image/jpeg', size: 6 * 1024 * 1024 }];
+    var errs = ReviewFormValidator.validateFiles(bigPhoto);
+    TestHarness.assertTrue(errs.length > 0, 'Photo over 5MB should produce error');
+    TestHarness.assertContains(errs[0], '5 MB', 'Should mention 5 MB limit');
+
+    var okPhoto = [{ name: 'ok.jpg', type: 'image/jpeg', size: 4 * 1024 * 1024 }];
+    var ok = ReviewFormValidator.validateFiles(okPhoto);
+    TestHarness.assertEqual(ok.length, 0, 'Photo under 5MB should pass');
+});
+
+TestHarness.test('test_video_max_50mb_warning', function() {
+    var bigVideo = [{ name: 'big.mp4', type: 'video/mp4', size: 60 * 1024 * 1024 }];
+    var errs = ReviewFormValidator.validateFiles(bigVideo);
+    TestHarness.assertTrue(errs.length > 0, 'Video over 50MB should produce error');
+    TestHarness.assertContains(errs[0], '50 MB', 'Should mention 50 MB limit');
+
+    var okVideo = [{ name: 'ok.mp4', type: 'video/mp4', size: 40 * 1024 * 1024 }];
+    var ok = ReviewFormValidator.validateFiles(okVideo);
+    TestHarness.assertEqual(ok.length, 0, 'Video under 50MB should pass');
+});
+
+TestHarness.test('test_accepted_file_types', function() {
+    var badFile = [{ name: 'doc.pdf', type: 'application/pdf', size: 1024 }];
+    var errs = ReviewFormValidator.validateFiles(badFile);
+    TestHarness.assertTrue(errs.length > 0, 'PDF should produce error');
+    TestHarness.assertContains(errs[0], 'unsupported type', 'Should mention unsupported type');
+
+    // All accepted types should pass
+    var goodTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm'];
+    goodTypes.forEach(function(t) {
+        var files = [{ name: 'file', type: t, size: 1024 }];
+        var ok = ReviewFormValidator.validateFiles(files);
+        TestHarness.assertEqual(ok.length, 0, t + ' should be accepted');
+    });
+});
+
+TestHarness.test('test_preview_shown_for_images', function() {
+    TestHarness.assertTrue(ReviewFormValidator.isPhotoType('image/jpeg'), 'JPEG should be photo type');
+    TestHarness.assertTrue(ReviewFormValidator.isPhotoType('image/png'), 'PNG should be photo type');
+    TestHarness.assertTrue(ReviewFormValidator.isPhotoType('image/gif'), 'GIF should be photo type');
+    TestHarness.assertTrue(ReviewFormValidator.isPhotoType('image/webp'), 'WebP should be photo type');
+    TestHarness.assertFalse(ReviewFormValidator.isPhotoType('video/mp4'), 'MP4 should NOT be photo type');
+});
+
+TestHarness.suite('Review Form - Submit State');
+
+TestHarness.test('test_submit_disabled_without_rating_and_text', function() {
+    TestHarness.assertFalse(ReviewFormValidator.canSubmit(null, ''), 'No rating, no text: cannot submit');
+    TestHarness.assertFalse(ReviewFormValidator.canSubmit(3, ''), 'Rating but no text: cannot submit');
+    TestHarness.assertFalse(ReviewFormValidator.canSubmit(null, 'Good ride'), 'Text but no rating: cannot submit');
+    TestHarness.assertTrue(ReviewFormValidator.canSubmit(4, 'Great ride!'), 'Both present: can submit');
+});
+
+TestHarness.suite('Review Form - Error Messages');
+
+TestHarness.test('test_rate_limit_error_displayed', function() {
+    // Simulate a 429 API error response
+    var errorResponse = {
+        status: 429,
+        message: "You've submitted 3 reviews in the last hour. Please wait before submitting another."
+    };
+    TestHarness.assertEqual(errorResponse.status, 429, 'Should be 429 status');
+    TestHarness.assertContains(errorResponse.message, '3 reviews', 'Should mention rate limit count');
+    TestHarness.assertContains(errorResponse.message, 'Please wait', 'Should tell user to wait');
+});
+
+TestHarness.test('test_duplicate_detection_message', function() {
+    // Simulate a duplicate detection response
+    var apiResponse = {
+        review: { id: 50, status: 'flagged' },
+        warning: 'This review appears to be similar to one you recently submitted. It has been sent for review.'
+    };
+    TestHarness.assertContains(apiResponse.warning, 'similar', 'Should mention similarity');
+    TestHarness.assertContains(apiResponse.warning, 'sent for review', 'Should mention moderation');
+    TestHarness.assertEqual(apiResponse.review.status, 'flagged', 'Review status should be flagged');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Order Lifecycle Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Mock RCAuth
+ */
+var RCAuth = {
+    _user: null,
+    setUser: function(u) { this._user = u; },
+    getUser: function() { return this._user; },
+    hasRole: function(role) { return this._user && this._user.roles && this._user.roles.indexOf(role) !== -1; }
+};
+
+/**
+ * Mock RCApi - tracks calls
+ */
+var RCApi = (function() {
+    var _calls = [];
+    return {
+        reset: function() { _calls = []; },
+        getCalls: function() { return _calls; },
+        getLastCall: function() { return _calls[_calls.length - 1] || null; },
+
+        acceptOrder: function(id) { _calls.push({ method: 'acceptOrder', id: id }); return Promise.resolve({}); },
+        startOrder: function(id) { _calls.push({ method: 'startOrder', id: id }); return Promise.resolve({}); },
+        completeOrder: function(id) { _calls.push({ method: 'completeOrder', id: id }); return Promise.resolve({}); },
+        cancelOrder: function(id, data) { _calls.push({ method: 'cancelOrder', id: id, data: data }); return Promise.resolve({}); },
+        disputeOrder: function(id, data) { _calls.push({ method: 'disputeOrder', id: id, data: data }); return Promise.resolve({}); },
+        resolveOrder: function(id, data) { _calls.push({ method: 'resolveOrder', id: id, data: data }); return Promise.resolve({}); }
+    };
+})();
+
+/**
+ * Mock RCUtil
+ */
+var RCUtil = {
+    escapeHtml: function(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
+    statusBadge: function(s) { return '<span class="rc-status-badge rc-status-' + s + '">' + s + '</span>'; }
+};
+
+/**
+ * Order Detail UI builder - mirrors order detail page module logic.
+ */
+var OrderDetailUI = {
+    LIFECYCLE_STEPS: ['pending_match', 'accepted', 'in_progress', 'completed'],
+
+    FREE_CANCEL_MINUTES: 5,
+    DISPUTE_WINDOW_HOURS: 72,
+
+    buildActionPanel: function(order) {
+        var user = RCAuth.getUser();
+        var uid = user ? user.id : null;
+        var isAdmin = RCAuth.hasRole('admin');
+        var status = order.status;
+        var html = '<div class="rc-action-panel">';
+
+        // Calculate time differences
+        var now = order._mockNow ? new Date(order._mockNow) : new Date();
+        var acceptedAt = order.accepted_at ? new Date(order.accepted_at) : null;
+        var completedAt = order.completed_at ? new Date(order.completed_at) : null;
+        var minutesSinceAccepted = acceptedAt ? (now - acceptedAt) / (1000 * 60) : null;
+        var hoursSinceCompleted = completedAt ? (now - completedAt) / (1000 * 60 * 60) : null;
+
+        switch (status) {
+            case 'pending_match':
+                if (order.passenger_id === uid) {
+                    html += '<button class="layui-btn layui-btn-normal rc-accept-btn">Accept Match</button>';
+                }
+                break;
+
+            case 'accepted':
+                if (order.passenger_id === uid || order.driver_id === uid) {
+                    html += '<button class="layui-btn layui-btn-warm rc-start-btn">Start Trip</button>';
+                }
+                // Cancel button
+                if (minutesSinceAccepted !== null && minutesSinceAccepted <= this.FREE_CANCEL_MINUTES) {
+                    html += '<button class="layui-btn layui-btn-danger layui-btn-sm rc-cancel-free-btn">Cancel (free)</button>';
+                } else {
+                    html += '<button class="layui-btn layui-btn-danger layui-btn-sm rc-cancel-btn">Cancel</button>';
+                    html += '<div class="rc-cancel-reason" style="display:none;">' +
+                        '<select class="rc-cancel-reason-code"><option value="">Select reason...</option>' +
+                        '<option value="schedule_change">Schedule change</option>' +
+                        '<option value="found_alternative">Found alternative</option>' +
+                        '<option value="other">Other</option></select>' +
+                        '<textarea class="rc-cancel-reason-text" placeholder="Additional details..."></textarea></div>';
+                }
+                break;
+
+            case 'in_progress':
+                if (order.passenger_id === uid || order.driver_id === uid) {
+                    html += '<button class="layui-btn rc-complete-btn">Complete Trip</button>';
+                }
+                html += '<button class="layui-btn layui-btn-danger layui-btn-sm" disabled title="Cancellation is not allowed once a trip is in progress.">Cancel</button>';
+                html += '<div class="rc-blocked-msg" style="color:#FF5722;font-size:13px;margin-top:8px;">Cancellation is not allowed once a trip is in progress.</div>';
+                break;
+
+            case 'completed':
+                if (hoursSinceCompleted !== null && hoursSinceCompleted <= this.DISPUTE_WINDOW_HOURS) {
+                    html += '<button class="layui-btn layui-btn-warm rc-dispute-btn">Open Dispute</button>';
+                    html += '<div class="rc-dispute-form" style="display:none;">' +
+                        '<textarea class="rc-dispute-reason" placeholder="Describe the issue..." required></textarea></div>';
+                } else {
+                    html += '<div class="rc-blocked-msg rc-dispute-closed" style="color:#999;font-size:13px;">The dispute window (72 hours) has closed for this trip.</div>';
+                }
+                break;
+
+            case 'canceled':
+                html += '<div class="rc-blocked-msg rc-no-actions" style="color:#999;font-size:13px;">This order has been canceled. No further actions are available.</div>';
+                break;
+
+            case 'expired':
+                html += '<div class="rc-blocked-msg rc-expired-msg" style="color:#999;font-size:13px;">This match request expired. The listing has been returned to active status.</div>';
+                break;
+
+            case 'disputed':
+                if (isAdmin) {
+                    html += '<div class="rc-resolve-panel">' +
+                        '<select class="rc-resolve-outcome"><option value="in_favor_passenger">In favor of passenger</option>' +
+                        '<option value="in_favor_driver">In favor of driver</option>' +
+                        '<option value="split">Split decision</option></select>' +
+                        '<textarea class="rc-resolve-notes" placeholder="Resolution notes..."></textarea>' +
+                        '<button class="layui-btn rc-resolve-btn">Resolve Dispute</button></div>';
+                }
+                break;
+        }
+
+        html += '</div>';
+        return html;
+    },
+
+    buildLifecycleBar: function(currentStatus) {
+        var html = '<div class="rc-lifecycle-bar" style="display:flex;gap:0;">';
+        var steps = this.LIFECYCLE_STEPS;
+        var currentIdx = steps.indexOf(currentStatus);
+        // For terminal states (canceled, expired, disputed), show partial
+        if (currentIdx === -1) currentIdx = -1;
+
+        for (var i = 0; i < steps.length; i++) {
+            var stepClass = 'rc-step';
+            if (i < currentIdx) stepClass += ' rc-step-done';
+            else if (i === currentIdx) stepClass += ' rc-step-current';
+            else stepClass += ' rc-step-pending';
+
+            html += '<div class="' + stepClass + '" data-step="' + steps[i] + '" style="flex:1;text-align:center;padding:8px;border-bottom:3px solid ' +
+                (i <= currentIdx ? '#009688' : '#e6e6e6') + ';">' +
+                steps[i].replace(/_/g, ' ') + '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+};
+
+// ---- Tests ----
+
+TestHarness.suite('Order Lifecycle - Action Buttons by Status');
+
+TestHarness.test('test_pending_match_shows_accept_button_for_passenger', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var order = { id: 1, status: 'pending_match', passenger_id: 10, driver_id: 20 };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'rc-accept-btn', 'Should show Accept button for passenger');
+    TestHarness.assertContains(html, 'Accept Match', 'Button label should be Accept Match');
+});
+
+TestHarness.test('test_accepted_shows_start_button_for_party', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var order = { id: 1, status: 'accepted', passenger_id: 10, driver_id: 20,
+        accepted_at: new Date(Date.now() - 3 * 60 * 1000).toISOString() };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'rc-start-btn', 'Should show Start Trip button');
+    TestHarness.assertContains(html, 'Start Trip', 'Button label should be Start Trip');
+});
+
+TestHarness.test('test_in_progress_shows_complete_button', function() {
+    RCAuth.setUser({ id: 20, name: 'Driver', roles: ['user'] });
+    var order = { id: 1, status: 'in_progress', passenger_id: 10, driver_id: 20 };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'rc-complete-btn', 'Should show Complete Trip button');
+    TestHarness.assertContains(html, 'Complete Trip', 'Button label should be Complete Trip');
+});
+
+TestHarness.test('test_in_progress_cancel_disabled_with_message', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var order = { id: 1, status: 'in_progress', passenger_id: 10, driver_id: 20 };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'disabled', 'Cancel button should be disabled');
+    TestHarness.assertContains(html, 'Cancellation is not allowed once a trip is in progress.', 'Should show blocked message');
+});
+
+TestHarness.test('test_completed_shows_dispute_button_within_72h', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var completedAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 24h ago
+    var order = { id: 1, status: 'completed', passenger_id: 10, driver_id: 20, completed_at: completedAt };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'rc-dispute-btn', 'Should show dispute button within 72h');
+    TestHarness.assertContains(html, 'Open Dispute', 'Button label should be Open Dispute');
+});
+
+TestHarness.test('test_completed_hides_dispute_after_72h', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var completedAt = new Date(Date.now() - 80 * 60 * 60 * 1000).toISOString(); // 80h ago
+    var order = { id: 1, status: 'completed', passenger_id: 10, driver_id: 20, completed_at: completedAt };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertNotContains(html, 'rc-dispute-btn', 'Should NOT show dispute button after 72h');
+    TestHarness.assertContains(html, 'The dispute window (72 hours) has closed for this trip.', 'Should show closure message');
+});
+
+TestHarness.test('test_canceled_shows_no_actions_message', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var order = { id: 1, status: 'canceled', passenger_id: 10, driver_id: 20 };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'This order has been canceled. No further actions are available.', 'Should show no-actions message');
+    TestHarness.assertNotContains(html, 'rc-accept-btn', 'Should not show accept button');
+    TestHarness.assertNotContains(html, 'rc-start-btn', 'Should not show start button');
+    TestHarness.assertNotContains(html, 'rc-complete-btn', 'Should not show complete button');
+});
+
+TestHarness.test('test_expired_shows_expiry_message', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var order = { id: 1, status: 'expired', passenger_id: 10, driver_id: 20 };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'This match request expired', 'Should show expiry message');
+    TestHarness.assertContains(html, 'returned to active status', 'Should mention listing restored');
+});
+
+TestHarness.suite('Order Lifecycle - Lifecycle Bar');
+
+TestHarness.test('test_lifecycle_bar_highlights_current_step', function() {
+    var html = OrderDetailUI.buildLifecycleBar('accepted');
+    // 'accepted' is index 1, so 'pending_match' (0) should be done, 'accepted' (1) should be current
+    TestHarness.assertContains(html, 'rc-step-done', 'Should have a done step');
+    TestHarness.assertContains(html, 'rc-step-current', 'Should have a current step');
+    TestHarness.assertContains(html, 'rc-step-pending', 'Should have pending steps');
+
+    // Check the border color logic: steps 0 and 1 should be #009688 (teal)
+    var steps = html.split('data-step=');
+    // pending_match step should be colored
+    TestHarness.assertContains(steps[1], '#009688', 'pending_match step should be teal (done)');
+    // accepted step should be colored
+    TestHarness.assertContains(steps[2], '#009688', 'accepted step should be teal (current)');
+    // in_progress step should be gray
+    TestHarness.assertContains(steps[3], '#e6e6e6', 'in_progress step should be gray (pending)');
+});
+
+TestHarness.suite('Order Lifecycle - Cancel Rules');
+
+TestHarness.test('test_cancel_free_within_5_min_no_reason', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var acceptedAt = new Date(Date.now() - 2 * 60 * 1000).toISOString(); // 2 min ago
+    var order = { id: 1, status: 'accepted', passenger_id: 10, driver_id: 20, accepted_at: acceptedAt };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'rc-cancel-free-btn', 'Should show free cancel button');
+    TestHarness.assertContains(html, 'Cancel (free)', 'Button should say Cancel (free)');
+    TestHarness.assertNotContains(html, 'rc-cancel-reason', 'Should NOT show reason form');
+});
+
+TestHarness.test('test_cancel_after_5_min_requires_reason', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var acceptedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 min ago
+    var order = { id: 1, status: 'accepted', passenger_id: 10, driver_id: 20, accepted_at: acceptedAt };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertNotContains(html, 'rc-cancel-free-btn', 'Should NOT show free cancel button');
+    TestHarness.assertContains(html, 'rc-cancel-btn', 'Should show cancel button');
+    TestHarness.assertContains(html, 'rc-cancel-reason', 'Should show reason form');
+    TestHarness.assertContains(html, 'Select reason', 'Should show reason dropdown');
+});
+
+TestHarness.suite('Order Lifecycle - Dispute');
+
+TestHarness.test('test_dispute_requires_reason_text', function() {
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var completedAt = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(); // 12h ago
+    var order = { id: 1, status: 'completed', passenger_id: 10, driver_id: 20, completed_at: completedAt };
+    var html = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(html, 'rc-dispute-reason', 'Should show dispute reason textarea');
+    TestHarness.assertContains(html, 'required', 'Dispute reason should be required');
+    TestHarness.assertContains(html, 'Describe the issue', 'Should have placeholder text');
+});
+
+TestHarness.test('test_resolve_only_shown_for_admin', function() {
+    // Non-admin should not see resolve
+    RCAuth.setUser({ id: 10, name: 'Passenger', roles: ['user'] });
+    var order = { id: 1, status: 'disputed', passenger_id: 10, driver_id: 20 };
+    var htmlUser = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertNotContains(htmlUser, 'rc-resolve-panel', 'Regular user should NOT see resolve panel');
+    TestHarness.assertNotContains(htmlUser, 'rc-resolve-btn', 'Regular user should NOT see resolve button');
+
+    // Admin should see resolve
+    RCAuth.setUser({ id: 99, name: 'Admin', roles: ['user', 'admin'] });
+    var htmlAdmin = OrderDetailUI.buildActionPanel(order);
+    TestHarness.assertContains(htmlAdmin, 'rc-resolve-panel', 'Admin should see resolve panel');
+    TestHarness.assertContains(htmlAdmin, 'rc-resolve-btn', 'Admin should see resolve button');
+    TestHarness.assertContains(htmlAdmin, 'Resolve Dispute', 'Button should say Resolve Dispute');
+    TestHarness.assertContains(htmlAdmin, 'rc-resolve-outcome', 'Should show outcome dropdown');
+    TestHarness.assertContains(htmlAdmin, 'rc-resolve-notes', 'Should show resolution notes field');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

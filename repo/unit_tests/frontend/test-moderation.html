@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Moderation Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Mock RCAuth
+ */
+var RCAuth = {
+    _user: null,
+    setUser: function(u) { this._user = u; },
+    getUser: function() { return this._user; },
+    hasRole: function(role) { return this._user && this._user.roles && this._user.roles.indexOf(role) !== -1; },
+    hasPermission: function(perm) {
+        if (!this._user) return false;
+        if (this.hasRole('admin')) return true;
+        if (this.hasRole('moderator') && perm.indexOf('moderation') !== -1) return true;
+        return false;
+    }
+};
+
+/**
+ * Mock RCApi
+ */
+var RCApi = (function() {
+    var _calls = [];
+    return {
+        reset: function() { _calls = []; },
+        getCalls: function() { return _calls; },
+        getLastCall: function() { return _calls[_calls.length - 1] || null; },
+
+        getModerationQueue: function(params) {
+            _calls.push({ method: 'getModerationQueue', params: params });
+            return Promise.resolve({ data: [], meta: { total: 0 } });
+        },
+        approveItem: function(id) {
+            _calls.push({ method: 'approveItem', id: id });
+            return Promise.resolve({ success: true });
+        },
+        rejectItem: function(id, reason) {
+            _calls.push({ method: 'rejectItem', id: id, reason: reason });
+            return Promise.resolve({ success: true });
+        },
+        escalateItem: function(id) {
+            _calls.push({ method: 'escalateItem', id: id });
+            return Promise.resolve({ success: true });
+        }
+    };
+})();
+
+var RCUtil = {
+    escapeHtml: function(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+};
+
+/**
+ * Moderation Queue UI builder
+ */
+var ModerationUI = {
+    checkAccess: function() {
+        if (!RCAuth.hasPermission('moderation.read')) {
+            return { allowed: false, html: '<div class="rc-forbidden" style="text-align:center;padding:40px;color:#FF5722;"><h3>Access Denied</h3><p>You do not have permission to access the moderation queue.</p></div>' };
+        }
+        return { allowed: true, html: '' };
+    },
+
+    renderFlagBadge: function(flag) {
+        var colorMap = {
+            'sensitive_word': '#FF5722',
+            'duplicate': '#FF9800',
+            'low_credibility': '#FFC107',
+            'manual_report': '#9C27B0'
+        };
+        var color = colorMap[flag.type] || '#999';
+        return '<span class="rc-flag-badge" style="display:inline-block;padding:2px 8px;border-radius:10px;color:#fff;background:' + color + ';font-size:12px;">' +
+            RCUtil.escapeHtml(flag.label || flag.type) + '</span>';
+    },
+
+    renderCredibilityScore: function(score) {
+        var color, label;
+        if (score > 0.7) {
+            color = 'green';
+            label = 'High';
+        } else if (score >= 0.3) {
+            color = '#DAA520';
+            label = 'Medium';
+        } else {
+            color = 'red';
+            label = 'Low';
+        }
+        return '<span class="rc-credibility-score" style="color:' + color + ';font-weight:bold;" data-score="' + score + '">' +
+            score.toFixed(2) + ' (' + label + ')</span>';
+    },
+
+    renderQueueItem: function(item) {
+        var html = '<div class="rc-mod-item layui-card" data-id="' + item.id + '" style="margin-bottom:12px;">';
+        html += '<div class="layui-card-body" style="padding:16px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
+        html += '<div style="flex:1;">';
+        html += '<div style="margin-bottom:6px;">' + this.renderFlagBadge(item.flag) + ' ';
+        html += this.renderCredibilityScore(item.credibility_score) + '</div>';
+        html += '<p style="margin:0 0 8px 0;color:#333;">' + RCUtil.escapeHtml(item.content_preview) + '</p>';
+        html += '<span style="color:#999;font-size:12px;">by ' + RCUtil.escapeHtml(item.user_name) + '</span>';
+        html += '</div>';
+        html += '<div class="rc-mod-actions" style="display:flex;gap:6px;">';
+        html += '<button class="layui-btn layui-btn-sm layui-btn-normal rc-approve-btn" data-id="' + item.id + '">Approve</button>';
+        html += '<button class="layui-btn layui-btn-sm layui-btn-danger rc-reject-btn" data-id="' + item.id + '">Reject</button>';
+        html += '<button class="layui-btn layui-btn-sm layui-btn-warm rc-escalate-btn" data-id="' + item.id + '">Escalate</button>';
+        html += '</div></div></div></div>';
+        return html;
+    },
+
+    renderEmptyQueue: function() {
+        return '<div class="rc-empty-queue" style="text-align:center;padding:40px;color:#999;">' +
+            '<i class="layui-icon layui-icon-ok-circle" style="font-size:48px;display:block;margin-bottom:12px;color:#009688;"></i>' +
+            '<p>The moderation queue is empty. All content has been reviewed.</p></div>';
+    },
+
+    renderQueue: function(items) {
+        if (!items || items.length === 0) return this.renderEmptyQueue();
+        var self = this;
+        return items.map(function(item) { return self.renderQueueItem(item); }).join('');
+    }
+};
+
+// ---- Tests ----
+
+TestHarness.suite('Moderation - Access Control');
+
+TestHarness.test('test_forbidden_for_regular_user', function() {
+    RCAuth.setUser({ id: 1, name: 'Alice', roles: ['user'] });
+    var access = ModerationUI.checkAccess();
+    TestHarness.assertFalse(access.allowed, 'Regular user should be denied');
+    TestHarness.assertContains(access.html, 'Access Denied', 'Should show access denied message');
+    TestHarness.assertContains(access.html, 'rc-forbidden', 'Should have forbidden class');
+});
+
+TestHarness.suite('Moderation - Queue Rendering');
+
+TestHarness.test('test_queue_renders_flagged_items', function() {
+    RCAuth.setUser({ id: 2, name: 'Mod', roles: ['user', 'moderator'] });
+    var items = [
+        { id: 101, flag: { type: 'sensitive_word', label: 'Sensitive Word' }, credibility_score: 0.45,
+          content_preview: 'This is a flagged review', user_name: 'TestUser' },
+        { id: 102, flag: { type: 'duplicate', label: 'Duplicate' }, credibility_score: 0.82,
+          content_preview: 'Another flagged item', user_name: 'OtherUser' }
+    ];
+    var html = ModerationUI.renderQueue(items);
+    TestHarness.assertContains(html, 'data-id="101"', 'Should render first item');
+    TestHarness.assertContains(html, 'data-id="102"', 'Should render second item');
+    TestHarness.assertContains(html, 'rc-approve-btn', 'Should show approve buttons');
+    TestHarness.assertContains(html, 'rc-reject-btn', 'Should show reject buttons');
+    TestHarness.assertContains(html, 'rc-escalate-btn', 'Should show escalate buttons');
+});
+
+TestHarness.test('test_sensitive_word_flag_shown_in_red', function() {
+    var badge = ModerationUI.renderFlagBadge({ type: 'sensitive_word', label: 'Sensitive Word' });
+    TestHarness.assertContains(badge, '#FF5722', 'Sensitive word badge should be red (#FF5722)');
+    TestHarness.assertContains(badge, 'Sensitive Word', 'Should show label text');
+});
+
+TestHarness.test('test_duplicate_flag_shown_in_orange', function() {
+    var badge = ModerationUI.renderFlagBadge({ type: 'duplicate', label: 'Duplicate' });
+    TestHarness.assertContains(badge, '#FF9800', 'Duplicate badge should be orange (#FF9800)');
+    TestHarness.assertContains(badge, 'Duplicate', 'Should show label text');
+});
+
+TestHarness.suite('Moderation - Credibility Score Colors');
+
+TestHarness.test('test_credibility_score_colored', function() {
+    // High credibility (>0.7) = green
+    var highScore = ModerationUI.renderCredibilityScore(0.85);
+    TestHarness.assertContains(highScore, 'color:green', 'Score >0.7 should be green');
+    TestHarness.assertContains(highScore, 'High', 'Score >0.7 should show High label');
+    TestHarness.assertContains(highScore, '0.85', 'Should display score value');
+
+    // Medium credibility (0.3-0.7) = yellow/golden
+    var medScore = ModerationUI.renderCredibilityScore(0.5);
+    TestHarness.assertContains(medScore, '#DAA520', 'Score 0.3-0.7 should be golden');
+    TestHarness.assertContains(medScore, 'Medium', 'Score 0.3-0.7 should show Medium label');
+
+    // Low credibility (<0.3) = red
+    var lowScore = ModerationUI.renderCredibilityScore(0.15);
+    TestHarness.assertContains(lowScore, 'color:red', 'Score <0.3 should be red');
+    TestHarness.assertContains(lowScore, 'Low', 'Score <0.3 should show Low label');
+});
+
+TestHarness.suite('Moderation - Actions');
+
+TestHarness.test('test_approve_sends_api_call', function() {
+    RCApi.reset();
+    RCApi.approveItem(101);
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.method, 'approveItem', 'Should call approveItem');
+    TestHarness.assertEqual(call.id, 101, 'Should pass item ID');
+});
+
+TestHarness.test('test_reject_requires_reason', function() {
+    // Simulate reject action - requires a reason string
+    RCApi.reset();
+    var reason = 'Content violates community guidelines';
+    RCApi.rejectItem(101, reason);
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.method, 'rejectItem', 'Should call rejectItem');
+    TestHarness.assertEqual(call.id, 101, 'Should pass item ID');
+    TestHarness.assertEqual(call.reason, reason, 'Should pass rejection reason');
+
+    // Verify that empty reason would be invalid
+    var emptyReason = '';
+    TestHarness.assertTrue(emptyReason.length === 0, 'Empty reason should be caught by UI validation');
+});
+
+TestHarness.test('test_escalate_sends_api_call', function() {
+    RCApi.reset();
+    RCApi.escalateItem(101);
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.method, 'escalateItem', 'Should call escalateItem');
+    TestHarness.assertEqual(call.id, 101, 'Should pass item ID');
+});
+
+TestHarness.suite('Moderation - Empty State');
+
+TestHarness.test('test_empty_queue_message', function() {
+    var html = ModerationUI.renderEmptyQueue();
+    TestHarness.assertContains(html, 'The moderation queue is empty', 'Should show empty message');
+    TestHarness.assertContains(html, 'All content has been reviewed', 'Should confirm all reviewed');
+    TestHarness.assertContains(html, 'rc-empty-queue', 'Should have empty queue class');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

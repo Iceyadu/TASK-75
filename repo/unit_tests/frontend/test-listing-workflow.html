@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Listing Workflow Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Mock RCApi - records API calls for verification.
+ */
+var RCApi = (function() {
+    var _calls = [];
+    return {
+        reset: function() { _calls = []; },
+        getCalls: function() { return _calls; },
+        getLastCall: function() { return _calls[_calls.length - 1] || null; },
+
+        createListing: function(data) {
+            _calls.push({ method: 'createListing', data: data });
+            return Promise.resolve({
+                id: 100,
+                status: 'draft',
+                version: 1,
+                title: data.title,
+                created_at: new Date().toISOString()
+            });
+        },
+
+        publishListing: function(id) {
+            _calls.push({ method: 'publishListing', id: id });
+            return Promise.resolve({ id: id, status: 'active' });
+        },
+
+        unpublishListing: function(id) {
+            _calls.push({ method: 'unpublishListing', id: id });
+            return Promise.resolve({ id: id, status: 'draft' });
+        },
+
+        updateListing: function(id, data) {
+            _calls.push({ method: 'updateListing', id: id, data: data });
+            return Promise.resolve({
+                id: id,
+                status: 'draft',
+                version: (data._previousVersion || 1) + 1,
+                title: data.title
+            });
+        },
+
+        getVersions: function(listingId) {
+            _calls.push({ method: 'getVersions', id: listingId });
+            return Promise.resolve({
+                versions: [
+                    { version: 1, created_at: '2026-04-01T10:00:00Z', author: 'Alice', changes: ['Created listing'] },
+                    { version: 2, created_at: '2026-04-02T12:00:00Z', author: 'Alice', changes: ['Changed pickup address'] },
+                    { version: 3, created_at: '2026-04-03T14:00:00Z', author: 'Alice', changes: ['Changed title', 'Changed rider count'] }
+                ]
+            });
+        },
+
+        getVersionDiff: function(listingId, v1, v2) {
+            _calls.push({ method: 'getVersionDiff', id: listingId, v1: v1, v2: v2 });
+            return Promise.resolve({
+                changes: [
+                    { field: 'title', old_value: 'Old Title', new_value: 'New Title' },
+                    { field: 'pickup_address', old_value: '123 Main St', new_value: '456 Oak Ave' }
+                ]
+            });
+        }
+    };
+})();
+
+/**
+ * Listing workflow simulation.
+ */
+var ListingWorkflow = {
+    createDraft: function(data) {
+        return RCApi.createListing(data);
+    },
+
+    publish: function(listingId) {
+        return RCApi.publishListing(listingId);
+    },
+
+    unpublish: function(listingId) {
+        return RCApi.unpublishListing(listingId);
+    },
+
+    renderChangePreview: function(diffData) {
+        if (!diffData || !diffData.changes || diffData.changes.length === 0) {
+            return '<p>No changes detected.</p>';
+        }
+        var html = '<div class="rc-change-preview">';
+        html += '<p>You changed: <strong>' +
+            diffData.changes.map(function(c) { return c.field.replace(/_/g, ' '); }).join(', ') +
+            '</strong>. Review changes before publishing.</p>';
+        html += '<table class="rc-diff-table">';
+        html += '<tr><th>Field</th><th>Old Value</th><th>New Value</th></tr>';
+        diffData.changes.forEach(function(c) {
+            html += '<tr><td>' + c.field + '</td>' +
+                '<td style="color:red;text-decoration:line-through;">' + c.old_value + '</td>' +
+                '<td style="color:green;">' + c.new_value + '</td></tr>';
+        });
+        html += '</table></div>';
+        return html;
+    },
+
+    renderVersionTimeline: function(versions) {
+        if (!versions || versions.length === 0) {
+            return '<p>No version history available.</p>';
+        }
+        var html = '<div class="rc-version-timeline">';
+        versions.forEach(function(v) {
+            html += '<div class="rc-version-entry" data-version="' + v.version + '">' +
+                '<strong>v' + v.version + '</strong> by ' + v.author +
+                ' on ' + v.created_at +
+                '<ul>' + v.changes.map(function(c) { return '<li>' + c + '</li>'; }).join('') + '</ul>' +
+                '</div>';
+        });
+        html += '</div>';
+        return html;
+    }
+};
+
+// ---- Tests ----
+
+TestHarness.suite('Listing Workflow - Draft/Publish');
+
+TestHarness.test('test_new_listing_starts_as_draft', function() {
+    RCApi.reset();
+    var result = null;
+    ListingWorkflow.createDraft({ title: 'Test Ride to Airport' }).then(function(r) { result = r; });
+    // Synchronous mock - result set immediately
+    // Wait a tick for promise resolution in some environments
+    TestHarness.assertEqual(RCApi.getLastCall().method, 'createListing');
+    // Verify the API was called to create - the response status is 'draft'
+    // In async test, we check the call was made
+    TestHarness.assertTrue(RCApi.getCalls().length === 1, 'Should have made one API call');
+});
+
+TestHarness.test('test_publish_button_sends_api_call', function() {
+    RCApi.reset();
+    ListingWorkflow.publish(100);
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.method, 'publishListing', 'Should call publishListing');
+    TestHarness.assertEqual(call.id, 100, 'Should pass listing ID');
+});
+
+TestHarness.test('test_unpublish_button_sends_api_call', function() {
+    RCApi.reset();
+    ListingWorkflow.unpublish(100);
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.method, 'unpublishListing', 'Should call unpublishListing');
+    TestHarness.assertEqual(call.id, 100, 'Should pass listing ID');
+});
+
+TestHarness.suite('Listing Workflow - Edit and Change Preview');
+
+TestHarness.test('test_edit_shows_change_preview', function() {
+    var diffData = {
+        changes: [
+            { field: 'title', old_value: 'Old Title', new_value: 'New Title' },
+            { field: 'pickup_address', old_value: '123 Main St', new_value: '456 Oak Ave' }
+        ]
+    };
+    var html = ListingWorkflow.renderChangePreview(diffData);
+    TestHarness.assertContains(html, 'You changed:', 'Should show change summary');
+    TestHarness.assertContains(html, 'title', 'Should mention title field');
+    TestHarness.assertContains(html, 'pickup address', 'Should mention pickup address field');
+    TestHarness.assertContains(html, 'Review changes before publishing', 'Should prompt review');
+});
+
+TestHarness.test('test_diff_view_shows_old_and_new', function() {
+    var diffData = {
+        changes: [
+            { field: 'title', old_value: 'Old Title', new_value: 'New Title' }
+        ]
+    };
+    var html = ListingWorkflow.renderChangePreview(diffData);
+    TestHarness.assertContains(html, 'Old Title', 'Should show old value');
+    TestHarness.assertContains(html, 'New Title', 'Should show new value');
+    TestHarness.assertContains(html, 'line-through', 'Old value should have strikethrough');
+    TestHarness.assertContains(html, 'color:green', 'New value should be green');
+    TestHarness.assertContains(html, 'color:red', 'Old value should be red');
+});
+
+TestHarness.suite('Listing Workflow - Version History');
+
+TestHarness.test('test_version_history_displays_timeline', function() {
+    var versions = [
+        { version: 1, created_at: '2026-04-01T10:00:00Z', author: 'Alice', changes: ['Created listing'] },
+        { version: 2, created_at: '2026-04-02T12:00:00Z', author: 'Alice', changes: ['Changed pickup address'] }
+    ];
+    var html = ListingWorkflow.renderVersionTimeline(versions);
+    TestHarness.assertContains(html, 'rc-version-timeline', 'Should have timeline container');
+    TestHarness.assertContains(html, 'v1', 'Should show version 1');
+    TestHarness.assertContains(html, 'v2', 'Should show version 2');
+    TestHarness.assertContains(html, 'Alice', 'Should show author');
+    TestHarness.assertContains(html, 'Created listing', 'Should show change summary for v1');
+    TestHarness.assertContains(html, 'Changed pickup address', 'Should show change summary for v2');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

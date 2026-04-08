@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Search Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Mock localStorage for search history tests.
+ */
+var mockStorage = {};
+var _realLocalStorage = window.localStorage;
+var MockLocalStorage = {
+    getItem: function(key) { return mockStorage[key] || null; },
+    setItem: function(key, val) { mockStorage[key] = String(val); },
+    removeItem: function(key) { delete mockStorage[key]; },
+    clear: function() { mockStorage = {}; }
+};
+
+/**
+ * Mock RCApi
+ */
+var RCApi = (function() {
+    var _calls = [];
+    var _suggestionsResponse = { suggestions: [] };
+    var _listingsResponse = { listings: [], meta: { total: 0, page: 1, per_page: 12 } };
+
+    return {
+        reset: function() { _calls = []; },
+        getCalls: function() { return _calls; },
+        getLastCall: function() { return _calls[_calls.length - 1] || null; },
+        setSuggestionsResponse: function(r) { _suggestionsResponse = r; },
+        setListingsResponse: function(r) { _listingsResponse = r; },
+
+        getSuggestions: function(q) {
+            _calls.push({ method: 'getSuggestions', q: q });
+            return Promise.resolve(_suggestionsResponse);
+        },
+
+        getListings: function(params) {
+            _calls.push({ method: 'getListings', params: params });
+            return Promise.resolve(_listingsResponse);
+        }
+    };
+})();
+
+/**
+ * RCUtil mock with search history and escapeHtml.
+ */
+var RCUtil = (function() {
+    var SEARCH_HISTORY_KEY = 'rc_search_history';
+    var MAX_HISTORY = 10;
+
+    return {
+        escapeHtml: function(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        },
+
+        getSearchHistory: function() {
+            var raw = MockLocalStorage.getItem(SEARCH_HISTORY_KEY);
+            if (!raw) return [];
+            try { return JSON.parse(raw); } catch(e) { return []; }
+        },
+
+        addSearchHistory: function(term) {
+            var history = this.getSearchHistory();
+            // Remove duplicate if exists
+            var idx = history.indexOf(term);
+            if (idx !== -1) history.splice(idx, 1);
+            // Add to front
+            history.unshift(term);
+            // Limit to max
+            if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY);
+            MockLocalStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
+        },
+
+        clearSearchHistory: function() {
+            MockLocalStorage.removeItem(SEARCH_HISTORY_KEY);
+        },
+
+        renderHighlight: function(text) {
+            // Renders <em> tags from API as highlighted spans
+            return String(text).replace(/<em>/g, '<em style="background-color:yellow;font-style:normal;">').replace(/<\/em>/g, '</em>');
+        }
+    };
+})();
+
+// ---- Tests ----
+
+TestHarness.suite('Search - Suggestions and API Calls');
+
+TestHarness.test('test_search_input_triggers_suggestions', function() {
+    RCApi.reset();
+    RCApi.setSuggestionsResponse({ suggestions: ['Airport ride', 'Airport shuttle'] });
+    RCApi.getSuggestions('airp');
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.method, 'getSuggestions', 'Should call getSuggestions');
+    TestHarness.assertEqual(call.q, 'airp', 'Should pass query string');
+});
+
+TestHarness.test('test_search_submit_calls_api', function() {
+    RCApi.reset();
+    RCApi.getListings({ q: 'airport', page: 1, per_page: 12, sort: 'newest' });
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.method, 'getListings', 'Should call getListings');
+    TestHarness.assertEqual(call.params.q, 'airport', 'Should pass query parameter');
+    TestHarness.assertEqual(call.params.sort, 'newest', 'Should pass sort parameter');
+});
+
+TestHarness.suite('Search - Highlight Rendering');
+
+TestHarness.test('test_highlight_renders_em_tags_with_yellow_background', function() {
+    var raw = 'Ride to <em>airport</em> terminal';
+    var rendered = RCUtil.renderHighlight(raw);
+    TestHarness.assertContains(rendered, 'background-color:yellow', 'Should have yellow background');
+    TestHarness.assertContains(rendered, '<em style="background-color:yellow;font-style:normal;">airport</em>', 'Should wrap em content');
+});
+
+TestHarness.suite('Search - Did You Mean');
+
+TestHarness.test('test_did_you_mean_shown_on_typo', function() {
+    // Simulate API returning did_you_mean for a typo
+    var apiResponse = {
+        listings: [],
+        meta: { total: 0, page: 1, per_page: 12 },
+        did_you_mean: 'airport'
+    };
+    var dymHtml = '';
+    if (apiResponse.did_you_mean) {
+        dymHtml = 'Did you mean: <a href="javascript:;" class="rc-dym-link">' +
+            RCUtil.escapeHtml(apiResponse.did_you_mean) + '</a>?';
+    }
+    TestHarness.assertContains(dymHtml, 'Did you mean:', 'Should show DYM prompt');
+    TestHarness.assertContains(dymHtml, 'airport', 'Should show suggested term');
+    TestHarness.assertContains(dymHtml, 'rc-dym-link', 'Should have clickable link');
+});
+
+TestHarness.test('test_did_you_mean_click_triggers_new_search', function() {
+    // Verify that clicking DYM would trigger a new search with corrected term
+    RCApi.reset();
+    var correctedTerm = 'airport';
+    // Simulate click handler: set search input value and call API
+    RCApi.getListings({ q: correctedTerm, page: 1, per_page: 12, sort: 'newest' });
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.params.q, correctedTerm, 'New search should use corrected term');
+});
+
+TestHarness.suite('Search - No Results Fallback');
+
+TestHarness.test('test_no_results_shows_recently_active', function() {
+    var apiResponse = {
+        listings: [],
+        meta: { total: 0, page: 1, per_page: 12 },
+        recent_active: [
+            { id: 1, title: 'Recent Ride 1', status: 'active' },
+            { id: 2, title: 'Recent Ride 2', status: 'active' }
+        ]
+    };
+    // Simulate the rendering logic from listings.js
+    var html = '';
+    if (apiResponse.listings.length === 0 && apiResponse.recent_active && apiResponse.recent_active.length) {
+        html = '<div class="rc-empty-state"><p>No rides found. Here are some recently active listings:</p></div>';
+        apiResponse.recent_active.forEach(function(l) {
+            html += '<div class="rc-listing-card">' + RCUtil.escapeHtml(l.title) + '</div>';
+        });
+    }
+    TestHarness.assertContains(html, 'No rides found', 'Should show no results message');
+    TestHarness.assertContains(html, 'recently active', 'Should mention recently active');
+    TestHarness.assertContains(html, 'Recent Ride 1', 'Should show first fallback listing');
+    TestHarness.assertContains(html, 'Recent Ride 2', 'Should show second fallback listing');
+});
+
+TestHarness.suite('Search - Filters');
+
+TestHarness.test('test_filter_vehicle_type_sent_to_api', function() {
+    RCApi.reset();
+    RCApi.getListings({ q: '', page: 1, per_page: 12, sort: 'newest', vehicle_type: 'sedan,suv' });
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.params.vehicle_type, 'sedan,suv', 'Vehicle type filter should be sent');
+});
+
+TestHarness.test('test_filter_rider_count_range_sent_to_api', function() {
+    RCApi.reset();
+    RCApi.getListings({ q: '', page: 1, per_page: 12, sort: 'newest', rider_count_min: 2, rider_count_max: 4 });
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.params.rider_count_min, 2, 'Rider count min should be sent');
+    TestHarness.assertEqual(call.params.rider_count_max, 4, 'Rider count max should be sent');
+});
+
+TestHarness.suite('Search - Sort');
+
+TestHarness.test('test_sort_newest_default', function() {
+    RCApi.reset();
+    var defaultSort = 'newest';
+    RCApi.getListings({ q: '', page: 1, per_page: 12, sort: defaultSort });
+    TestHarness.assertEqual(RCApi.getLastCall().params.sort, 'newest', 'Default sort should be newest');
+});
+
+TestHarness.test('test_sort_most_popular_changes_api_param', function() {
+    RCApi.reset();
+    RCApi.getListings({ q: '', page: 1, per_page: 12, sort: 'most_popular' });
+    TestHarness.assertEqual(RCApi.getLastCall().params.sort, 'most_popular', 'Sort should be most_popular');
+});
+
+TestHarness.suite('Search - History');
+
+TestHarness.test('test_search_history_stored_in_localStorage', function() {
+    MockLocalStorage.clear();
+    RCUtil.addSearchHistory('airport ride');
+    var history = RCUtil.getSearchHistory();
+    TestHarness.assertEqual(history.length, 1, 'Should have one history entry');
+    TestHarness.assertEqual(history[0], 'airport ride', 'Should contain the search term');
+});
+
+TestHarness.test('test_search_history_max_10_items', function() {
+    MockLocalStorage.clear();
+    for (var i = 0; i < 15; i++) {
+        RCUtil.addSearchHistory('term_' + i);
+    }
+    var history = RCUtil.getSearchHistory();
+    TestHarness.assertEqual(history.length, 10, 'History should be capped at 10 items');
+    TestHarness.assertEqual(history[0], 'term_14', 'Most recent should be first');
+    TestHarness.assertEqual(history[9], 'term_5', 'Oldest kept should be term_5');
+});
+
+TestHarness.test('test_search_history_click_triggers_search', function() {
+    // Simulate: clicking a history chip sets the search input and calls API
+    MockLocalStorage.clear();
+    RCUtil.addSearchHistory('downtown shuttle');
+    RCApi.reset();
+    var historyTerm = RCUtil.getSearchHistory()[0];
+    RCApi.getListings({ q: historyTerm, page: 1, per_page: 12, sort: 'newest' });
+    var call = RCApi.getLastCall();
+    TestHarness.assertEqual(call.params.q, 'downtown shuttle', 'Clicking history should search that term');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

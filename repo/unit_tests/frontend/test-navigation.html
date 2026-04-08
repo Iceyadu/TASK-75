@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RideCircle - Navigation Tests</title>
+</head>
+<body>
+<div id="test-results">Running tests...</div>
+<div id="nav-container" style="display:none;"></div>
+
+<script src="test-harness.js"></script>
+<script>
+/**
+ * Mock RCAuth - simulates authentication state for different roles.
+ */
+var RCAuth = (function() {
+    var _user = null;
+    return {
+        setUser: function(u) { _user = u; },
+        getUser: function() { return _user; },
+        isAuthenticated: function() { return _user !== null; },
+        hasRole: function(role) {
+            if (!_user || !_user.roles) return false;
+            return _user.roles.indexOf(role) !== -1;
+        },
+        logout: function() { _user = null; },
+        getToken: function() { return _user ? 'mock-token-123' : null; }
+    };
+})();
+
+/**
+ * Mock RCRouter
+ */
+var RCRouter = {
+    _lastNavigate: null,
+    navigate: function(path) { this._lastNavigate = path; }
+};
+
+/**
+ * Simulated nav-building logic that mirrors repo/frontend/js/app.js.
+ * Builds role-based navigation items into the provided container element.
+ */
+function buildNavigation(container) {
+    var items = [];
+
+    if (!RCAuth.isAuthenticated()) {
+        RCRouter.navigate('#/login');
+        container.innerHTML = '';
+        return;
+    }
+
+    // Base items for all authenticated users
+    items.push({ label: 'Dashboard', href: '#/', icon: 'layui-icon-home' });
+    items.push({ label: 'Listings', href: '#/listings', icon: 'layui-icon-list' });
+    items.push({ label: 'My Listings', href: '#/my/listings', icon: 'layui-icon-note' });
+    items.push({ label: 'Orders', href: '#/orders', icon: 'layui-icon-cart' });
+    items.push({ label: 'Reviews', href: '#/reviews', icon: 'layui-icon-star' });
+
+    // Moderator items
+    if (RCAuth.hasRole('moderator') || RCAuth.hasRole('admin')) {
+        items.push({ label: 'Moderation', href: '#/moderation', icon: 'layui-icon-flag-fill' });
+    }
+
+    // Admin-only items
+    if (RCAuth.hasRole('admin')) {
+        items.push({ label: 'Users', href: '#/admin/users', icon: 'layui-icon-group' });
+        items.push({ label: 'Org Settings', href: '#/admin/settings', icon: 'layui-icon-set' });
+        items.push({ label: 'Governance', href: '#/admin/governance', icon: 'layui-icon-chart' });
+        items.push({ label: 'Audit Logs', href: '#/admin/audit', icon: 'layui-icon-log' });
+    }
+
+    var html = '<ul class="layui-nav" lay-filter="main-nav">';
+    items.forEach(function(item) {
+        html += '<li class="layui-nav-item"><a href="' + item.href + '">' +
+            '<i class="layui-icon ' + item.icon + '"></i> ' + item.label + '</a></li>';
+    });
+    html += '</ul>';
+    container.innerHTML = html;
+}
+
+function getNavLabels(container) {
+    var links = container.querySelectorAll('.layui-nav-item a');
+    var labels = [];
+    for (var i = 0; i < links.length; i++) {
+        labels.push(links[i].textContent.trim());
+    }
+    return labels;
+}
+
+// ---- Tests ----
+
+var container = document.getElementById('nav-container');
+
+TestHarness.suite('Role-Based Navigation');
+
+TestHarness.test('test_user_sees_basic_nav_items', function() {
+    RCAuth.setUser({ id: 1, name: 'Alice', roles: ['user'] });
+    buildNavigation(container);
+    var labels = getNavLabels(container);
+    TestHarness.assertContains(labels.join(','), 'Dashboard', 'Should contain Dashboard');
+    TestHarness.assertContains(labels.join(','), 'Listings', 'Should contain Listings');
+    TestHarness.assertContains(labels.join(','), 'My Listings', 'Should contain My Listings');
+    TestHarness.assertContains(labels.join(','), 'Orders', 'Should contain Orders');
+    TestHarness.assertContains(labels.join(','), 'Reviews', 'Should contain Reviews');
+});
+
+TestHarness.test('test_user_does_not_see_moderation_link', function() {
+    RCAuth.setUser({ id: 1, name: 'Alice', roles: ['user'] });
+    buildNavigation(container);
+    var labels = getNavLabels(container);
+    TestHarness.assertNotContains(labels.join(','), 'Moderation', 'Regular user should not see Moderation');
+});
+
+TestHarness.test('test_user_does_not_see_admin_links', function() {
+    RCAuth.setUser({ id: 1, name: 'Alice', roles: ['user'] });
+    buildNavigation(container);
+    var labels = getNavLabels(container);
+    TestHarness.assertNotContains(labels.join(','), 'Users', 'Regular user should not see Users');
+    TestHarness.assertNotContains(labels.join(','), 'Org Settings', 'Regular user should not see Settings');
+    TestHarness.assertNotContains(labels.join(','), 'Governance', 'Regular user should not see Governance');
+    TestHarness.assertNotContains(labels.join(','), 'Audit Logs', 'Regular user should not see Audit');
+});
+
+TestHarness.test('test_moderator_sees_moderation_link', function() {
+    RCAuth.setUser({ id: 2, name: 'Bob', roles: ['user', 'moderator'] });
+    buildNavigation(container);
+    var labels = getNavLabels(container);
+    TestHarness.assertContains(labels.join(','), 'Moderation', 'Moderator should see Moderation');
+});
+
+TestHarness.test('test_moderator_does_not_see_admin_links', function() {
+    RCAuth.setUser({ id: 2, name: 'Bob', roles: ['user', 'moderator'] });
+    buildNavigation(container);
+    var labels = getNavLabels(container);
+    TestHarness.assertNotContains(labels.join(','), 'Users', 'Moderator should not see Users');
+    TestHarness.assertNotContains(labels.join(','), 'Org Settings', 'Moderator should not see Settings');
+    TestHarness.assertNotContains(labels.join(','), 'Governance', 'Moderator should not see Governance');
+    TestHarness.assertNotContains(labels.join(','), 'Audit Logs', 'Moderator should not see Audit');
+});
+
+TestHarness.test('test_admin_sees_all_nav_items', function() {
+    RCAuth.setUser({ id: 3, name: 'Carol', roles: ['user', 'admin'] });
+    buildNavigation(container);
+    var labels = getNavLabels(container);
+    TestHarness.assertContains(labels.join(','), 'Dashboard');
+    TestHarness.assertContains(labels.join(','), 'Listings');
+    TestHarness.assertContains(labels.join(','), 'My Listings');
+    TestHarness.assertContains(labels.join(','), 'Orders');
+    TestHarness.assertContains(labels.join(','), 'Reviews');
+    TestHarness.assertContains(labels.join(','), 'Moderation');
+    TestHarness.assertContains(labels.join(','), 'Users');
+    TestHarness.assertContains(labels.join(','), 'Org Settings');
+    TestHarness.assertContains(labels.join(','), 'Governance');
+    TestHarness.assertContains(labels.join(','), 'Audit Logs');
+    TestHarness.assertEqual(labels.length, 10, 'Admin should see exactly 10 nav items');
+});
+
+TestHarness.test('test_unauthenticated_redirects_to_login', function() {
+    RCAuth.setUser(null);
+    RCRouter._lastNavigate = null;
+    buildNavigation(container);
+    TestHarness.assertEqual(RCRouter._lastNavigate, '#/login', 'Should redirect to login');
+    TestHarness.assertEqual(container.innerHTML, '', 'Nav should be empty');
+});
+
+TestHarness.test('test_logout_clears_user_state', function() {
+    RCAuth.setUser({ id: 1, name: 'Alice', roles: ['user'] });
+    TestHarness.assertTrue(RCAuth.isAuthenticated(), 'Should be authenticated before logout');
+    RCAuth.logout();
+    TestHarness.assertFalse(RCAuth.isAuthenticated(), 'Should not be authenticated after logout');
+    TestHarness.assertEqual(RCAuth.getUser(), null, 'User should be null after logout');
+    TestHarness.assertEqual(RCAuth.getToken(), null, 'Token should be null after logout');
+});
+
+TestHarness.render();
+</script>
+</body>
+</html>

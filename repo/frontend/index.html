@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RideCircle Carpool Marketplace</title>
+    <link rel="stylesheet" href="layui/css/layui.css">
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <!-- Top navigation bar - hidden on login/register -->
+    <div id="app-header" class="layui-layout-admin" style="display:none;">
+        <div class="layui-header">
+            <div class="layui-logo">RideCircle</div>
+            <ul id="nav-menu" class="layui-nav layui-layout-left"></ul>
+            <ul class="layui-nav layui-layout-right">
+                <li class="layui-nav-item">
+                    <a href="javascript:;" id="user-menu-name">User</a>
+                    <dl class="layui-nav-child">
+                        <dd><a href="#/profile">Profile</a></dd>
+                        <dd><a href="#/profile/tokens">API Tokens</a></dd>
+                        <dd><a id="logout-btn" href="javascript:;">Logout</a></dd>
+                    </dl>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <!-- Main content container -->
+    <div id="app-body" class="rc-body">
+        <div id="app-content" class="rc-content"></div>
+    </div>
+    <!-- Loading overlay -->
+    <div id="app-loading" class="rc-loading" style="display:none;">
+        <div class="rc-loading-spinner"></div>
+    </div>
+
+    <script src="layui/layui.js"></script>
+    <script src="js/util.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/pages/login.js"></script>
+    <script src="js/pages/register.js"></script>
+    <script src="js/pages/dashboard.js"></script>
+    <script src="js/pages/profile.js"></script>
+    <script src="js/pages/tokens.js"></script>
+    <script src="js/pages/listings.js"></script>
+    <script src="js/pages/listing-detail.js"></script>
+    <script src="js/pages/listing-form.js"></script>
+    <script src="js/pages/my-listings.js"></script>
+    <script src="js/pages/listing-versions.js"></script>
+    <script src="js/pages/orders.js"></script>
+    <script src="js/pages/order-detail.js"></script>
+    <script src="js/pages/review-form.js"></script>
+    <script src="js/pages/reviews.js"></script>
+    <script src="js/pages/moderation.js"></script>
+    <script src="js/pages/moderation-detail.js"></script>
+    <script src="js/pages/admin-users.js"></script>
+    <script src="js/pages/admin-settings.js"></script>
+    <script src="js/pages/admin-governance.js"></script>
+    <script src="js/pages/admin-lineage.js"></script>
+    <script src="js/pages/admin-audit.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
