@@ -43,8 +43,8 @@ Workspace: `/Users/mac/Documents/EaglePoint/TASK-ridecircle`
 - Evidence: `repo/backend/app/model/User.php`, `repo/backend/app/ExceptionHandle.php`, logging/response handling paths prevent sensitive field exposure in normal API responses and error envelopes.
 
 ## Scope Integrity Notes
-- This report intentionally excludes items that were not part of the underlying audit issue set.
-- Specifically removed from fix-check scope:  
+- This report intentionally includes only issues that appear in `audit_report-2.md`.
+- The following items were previously listed in fix-check text but are **not present in the actual audit report**, so they are excluded:  
   - "Order expiry command -> audit user_agent field"  
   - "Credibility recompute querying user_id"  
   - "Dictionary command created_at issue"
