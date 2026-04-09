@@ -38,10 +38,11 @@ class ExceptionHandle extends Handle
     {
         if (!$this->isIgnoreReport($exception)) {
             $request = $this->app->request;
+            $safeMessage = $this->sanitizeLogMessage($exception->getMessage());
 
             $context = [
                 'exception' => get_class($exception),
-                'message'   => $exception->getMessage(),
+                'message'   => $safeMessage,
                 'file'      => $exception->getFile(),
                 'line'      => $exception->getLine(),
             ];
@@ -55,8 +56,27 @@ class ExceptionHandle extends Handle
                 $context['ip'] = mask_ip($ip);
             }
 
-            $this->app->log->error($exception->getMessage(), $context);
+            $this->app->log->error($safeMessage, $context);
         }
+    }
+
+    /**
+     * Redact sensitive fragments before writing error messages to logs.
+     */
+    protected function sanitizeLogMessage(string $message): string
+    {
+        $masked = $message;
+
+        // Mask email addresses.
+        $masked = (string) preg_replace('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', '[redacted-email]', $masked);
+
+        // Mask bearer tokens.
+        $masked = (string) preg_replace('/\bBearer\s+[A-Za-z0-9\-_\.]+\b/i', 'Bearer [redacted-token]', $masked);
+
+        // Mask common password/secret patterns.
+        $masked = (string) preg_replace('/\b(password|passwd|token|secret)\b\s*[:=]\s*([^\s,\]]+)/i', '$1=[redacted]', $masked);
+
+        return $masked;
     }
 
     /**

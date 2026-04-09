@@ -2,6 +2,14 @@
 
 ---
 
+## Submission Clarification (Week 2 Tooling and Session Files)
+
+- Week 2 implementation and debugging work is represented by the files in `sessions/` (`develop-1.json`, `bugfix-1.json`, `bugfix-2.json`).
+- The intended submission artifacts are these **session JSON files** (not trajectory exports).
+- Tooling expectation for Week 2 is Claude-oriented workflow; no separate trajectory bundle is required for acceptance packaging.
+
+---
+
 ## Q1: Multi-Organization vs Single-Organization Deployment
 
 Question:

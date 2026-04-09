@@ -7,13 +7,5 @@
   "backend_framework": "ThinkPHP",
   "database": "MySQL",
   "architecture_style": "decoupled-frontend-backend-rest-api",
-  "offline_constraint": true,
-  "delivery_phases": [
-    "phase-0-structure-and-docs",
-    "phase-1-backend-core",
-    "phase-2-frontend-core",
-    "phase-3-integration",
-    "phase-4-testing",
-    "phase-5-hardening"
-  ]
+  "offline_constraint": true
 }

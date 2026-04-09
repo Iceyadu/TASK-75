@@ -42,13 +42,13 @@ Each frontend page URL maps to a JavaScript module in `repo/frontend/js/pages/`.
 | 3 | #/ | js/pages/dashboard.js | Role-dependent quick stats and activity feed |
 | 4 | #/listings | js/pages/listings.js | Search bar, filters, sort tabs, paginated results |
 | 5 | #/listings/:id | js/pages/listing-detail.js | Detail view with action panel and version history link |
-| 6 | #/listings/create | js/pages/listing-create.js | Form with draft/publish dual action |
-| 7 | #/listings/:id/edit | js/pages/listing-edit.js | Pre-populated form with change preview |
+| 6 | #/listings/create | js/pages/listing-form.js | Form with draft/publish dual action |
+| 7 | #/listings/:id/edit | js/pages/listing-form.js | Pre-populated form with change preview |
 | 8 | #/listings/:id/versions | js/pages/listing-versions.js | Timeline and diff viewer |
 | 9 | #/my/listings | js/pages/my-listings.js | Status filter tabs, bulk close (admin) |
 | 10 | #/orders | js/pages/orders.js | Role and status filters, paginated cards |
 | 11 | #/orders/:id | js/pages/order-detail.js | Lifecycle bar, action buttons, blocked-action messages |
-| 12 | #/orders/:id/review | js/pages/review-create.js | Star rating, text, file upload with preview |
+| 12 | #/orders/:id/review | js/pages/review-form.js | Star rating, text, file upload with preview |
 | 13 | #/reviews | js/pages/reviews.js | Filter by listing or user, paginated |
 | 14 | #/profile | js/pages/profile.js | View/edit profile |
 | 15 | #/moderation | js/pages/moderation.js | Flagged items queue (moderator+admin) |
@@ -58,7 +58,7 @@ Each frontend page URL maps to a JavaScript module in `repo/frontend/js/pages/`.
 | 19 | #/admin/governance | js/pages/admin-governance.js | Data quality metrics and charts (admin) |
 | 20 | #/admin/governance/lineage | js/pages/admin-lineage.js | Data lineage records (admin) |
 | 21 | #/admin/audit | js/pages/admin-audit.js | Audit log viewer with PII toggle (admin) |
-| 22 | #/profile/tokens | js/pages/api-tokens.js | API token management |
+| 22 | #/profile/tokens | js/pages/tokens.js | API token management |
 
 ## Backend Route Groups
 
