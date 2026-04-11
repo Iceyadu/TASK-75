@@ -76,6 +76,10 @@ class ExceptionHandle extends Handle
         // Mask common password/secret patterns.
         $masked = (string) preg_replace('/\b(password|passwd|token|secret)\b\s*[:=]\s*([^\s,\]]+)/i', '$1=[redacted]', $masked);
 
+        // Avoid echoing password hashes or long hex secrets if they appear in messages.
+        $masked = (string) preg_replace('/\$2[ayb]\$.{50,}/', '[bcrypt-hash]', $masked);
+        $masked = (string) preg_replace('/\b[a-f0-9]{64}\b/i', '[hex-digest]', $masked);
+
         return $masked;
     }
 

@@ -52,7 +52,7 @@ class OrderExpireCommand extends Command
                     $listing->save();
                 }
 
-                // Create audit log entry
+                // Create audit log entry (batch jobs have no browser; schema has no user_agent column).
                 AuditLog::create([
                     'organization_id' => $order->organization_id,
                     'user_id'         => $order->passenger_id,
@@ -60,7 +60,12 @@ class OrderExpireCommand extends Command
                     'resource_type'   => 'order',
                     'resource_id'     => $order->id,
                     'old_value'       => json_encode(['status' => 'pending_match']),
-                    'new_value'       => json_encode(['status' => 'expired']),
+                    'new_value'       => json_encode([
+                        'status'              => 'expired',
+                        'actor'               => 'system',
+                        'source'              => 'order:expire',
+                        'client_user_agent'   => 'cron/cli',
+                    ]),
                     'ip_address'      => '127.0.0.1',
                     'created_at'      => date('Y-m-d H:i:s'),
                 ]);

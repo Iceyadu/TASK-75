@@ -46,17 +46,19 @@ repo/
   .env.example        All configuration variables with defaults
 ```
 
-## Quick Start
+## Quick Start (Docker — matches `docker-compose.yml`)
 
-1. Copy `.env.example` to `.env` and configure values.
-2. Run `docker-compose up -d` to start all services.
-3. Import schema: `mysql -u ridecircle -p ridecircle < backend/database/schema.sql`
-4. Seed data: `php backend/database/seeds/DatabaseSeeder.php`
-5. Access the frontend at `http://localhost:8000`.
-6. Backend API at `http://localhost:8080`.
-7. Login with seeded accounts: `admin@ridecircle.local` / `Admin123!`
+1. `cd` to the directory that contains `docker-compose.yml` (this repo’s `repo/` folder).
+2. Copy `repo/.env.example` to `repo/.env` and set secrets (`APP_KEY`, `MEDIA_SIGN_SECRET`, DB passwords if you change defaults).
+3. `docker compose up -d` — MySQL loads `backend/database/schema.sql` on **first** init of an empty data volume; backend waits for MySQL health, then serves the API on **port 8080 inside the container** (host port defaults to **8081**, override with `BACKEND_PORT`).
+4. Load fixtures: from `repo/`, run `./run_tests.sh api` once (waits for MySQL + API, pipes `DatabaseSeeder.php` when `organizations` is empty), **or** manually:  
+   `docker compose exec backend php /var/www/html/database/seeds/DatabaseSeeder.php | docker compose exec -T mysql mysql -uridecircle -pchange_me_in_production ridecircle`  
+   (adjust user/password to match your `.env`).
+5. Frontend: `http://localhost:8000` (container `frontend` maps host 8000 → nginx 80).
+6. API base URL: `http://localhost:8081` (or `${BACKEND_PORT:-8081}`) — e.g. `GET /api/auth/me` returns `401` without a token.
+7. Seeded login: `admin@ridecircle.local` / `Admin123!` (organization code `RC2026`).
 
-**Note**: Steps 2-6 require Docker and MySQL runtime. This is **Manual Verification Required**.
+**Note:** If you change MySQL data, remove the volume (`docker compose down -v`) to re-run initdb, or apply migrations/seeds manually.
 
 ## Configuration (.env.example)
 

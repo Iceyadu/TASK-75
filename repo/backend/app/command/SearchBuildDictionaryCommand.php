@@ -70,12 +70,15 @@ class SearchBuildDictionaryCommand extends Command
             SearchDictionary::where('organization_id', $orgId)->delete();
 
             // Rebuild
-            $insertData = [];
+            $nowTs        = date('Y-m-d H:i:s');
+            $insertData   = [];
             foreach ($wordFrequency as $word => $frequency) {
                 $insertData[] = [
                     'organization_id' => $orgId,
                     'word'            => (string) $word,
                     'frequency'       => $frequency,
+                    // Table has updated_at (no created_at); explicit timestamp keeps bulk inserts deterministic.
+                    'updated_at'      => $nowTs,
                 ];
             }
 

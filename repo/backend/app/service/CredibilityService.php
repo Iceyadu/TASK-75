@@ -58,8 +58,8 @@ class CredibilityService
         // 3. pattern_factor: start at 1.0, check anomalies
         $patternFactor = 1.0;
 
-        // Anomaly check 1: Count 5-star reviews in the last hour
-        $oneHourAgo    = date('Y-m-d\TH:i:s\Z', strtotime('-1 hour'));
+        // Anomaly check 1: Count 5-star reviews in the last hour (MySQL DATETIME compares use local format).
+        $oneHourAgo    = date('Y-m-d H:i:s', strtotime('-1 hour'));
         $fiveStarCount = Review::where('user_id', $userId)
             ->where('organization_id', $orgId)
             ->where('rating', 5)
@@ -84,7 +84,7 @@ class CredibilityService
         // Anomaly check 3: Near-identical text (trigram > 0.9) with same rating
         $recentReviews = Review::where('user_id', $userId)
             ->where('organization_id', $orgId)
-            ->where('created_at', '>', date('Y-m-d\TH:i:s\Z', strtotime('-30 days')))
+            ->where('created_at', '>', date('Y-m-d H:i:s', strtotime('-30 days')))
             ->select();
 
         // We need the current review text if it exists; check if there's a review for this order

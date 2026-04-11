@@ -526,6 +526,8 @@ class ListingService
             'Y-m-d\TH:i:s\Z',
             'Y-m-d h:i A',
             'Y-m-d h:i:s A',
+            'Y-m-d g:i A',
+            'Y-m-d g:i:s A',
         ];
 
         foreach ($formats as $format) {

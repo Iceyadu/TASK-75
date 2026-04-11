@@ -167,6 +167,24 @@ ensure_docker_api_seed_data() {
     return 0
 }
 
+# Add second-tenant rows for cross-org API tests when DB was created from an older single-org seed.
+ensure_second_organization_fixtures() {
+    local d
+    d="$(docker_bin)" || return 0
+    if ! "$d" ps --format '{{.Names}}' 2>/dev/null | grep -qx 'ridecircle-mysql'; then
+        return 0
+    fi
+    if ! "$d" ps --format '{{.Names}}' 2>/dev/null | grep -qx 'ridecircle-backend'; then
+        return 0
+    fi
+    log_info "Ensuring second-organization fixtures (idempotent)..."
+    if ! "$d" exec ridecircle-backend php /var/www/html/database/seeds/EnsureSecondOrganization.php 2>/dev/null \
+        | "$d" exec -i ridecircle-mysql mysql -u"${DB_SEED_USER}" -p"${DB_SEED_PASS}" -D "${DB_SEED_NAME}"; then
+        log_warn "EnsureSecondOrganization failed (non-fatal if already applied)."
+    fi
+    return 0
+}
+
 run_unit_tests() {
     log_info "Running unit tests..."
     if [ -d "$UNIT_DIR" ] && [ "$(ls -A "$UNIT_DIR" 2>/dev/null)" ]; then
@@ -185,6 +203,7 @@ run_api_tests() {
     wait_for_docker_mysql || exit 2
     wait_for_api_backend || exit 2
     ensure_docker_api_seed_data || exit 2
+    ensure_second_organization_fixtures
     if [ -d "$API_DIR" ] && [ "$(ls -A "$API_DIR" 2>/dev/null)" ]; then
         cd "${BACKEND_DIR}"
         php vendor/bin/phpunit --configuration phpunit.xml --testsuite api

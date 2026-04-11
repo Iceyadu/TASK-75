@@ -15,6 +15,7 @@ $passwords = [
     'Mod12345!'  => password_hash('Mod12345!', PASSWORD_BCRYPT, ['cost' => 10]),
     'Alice123!'  => password_hash('Alice123!', PASSWORD_BCRYPT, ['cost' => 10]),
     'Bob12345!'  => password_hash('Bob12345!', PASSWORD_BCRYPT, ['cost' => 10]),
+    'Carol123!'  => password_hash('Carol123!', PASSWORD_BCRYPT, ['cost' => 10]),
 ];
 
 $now = gmdate('Y-m-d H:i:s');
@@ -32,7 +33,8 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- Organization
 -- -----------------------------------------------------------
 INSERT INTO `organizations` (`id`, `name`, `code`, `settings`, `created_at`, `updated_at`) VALUES
-(1, 'RideCircle Community', 'RC2026', '{"max_listings_per_user": 50, "require_review_moderation": false}', '{$now}', '{$now}');
+(1, 'RideCircle Community', 'RC2026', '{"max_listings_per_user": 50, "require_review_moderation": false}', '{$now}', '{$now}'),
+(2, 'Eastside Co-op', 'RC2026B', '{"max_listings_per_user": 50, "require_review_moderation": false}', '{$now}', '{$now}');
 
 -- -----------------------------------------------------------
 -- Roles
@@ -40,7 +42,10 @@ INSERT INTO `organizations` (`id`, `name`, `code`, `settings`, `created_at`, `up
 INSERT INTO `roles` (`id`, `organization_id`, `name`, `slug`, `description`) VALUES
 (1, 1, 'Administrator', 'admin',     'Full system administrator with all permissions'),
 (2, 1, 'Moderator',     'moderator', 'Content moderator with review and moderation capabilities'),
-(3, 1, 'User',          'user',      'Standard user with basic listing and order permissions');
+(3, 1, 'User',          'user',      'Standard user with basic listing and order permissions'),
+(4, 2, 'Administrator', 'admin',     'Full system administrator with all permissions'),
+(5, 2, 'Moderator',     'moderator', 'Content moderator with review and moderation capabilities'),
+(6, 2, 'User',          'user',      'Standard user with basic listing and order permissions');
 
 -- -----------------------------------------------------------
 -- Permissions
@@ -101,6 +106,14 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`) VALUES
 (3, 10), (3, 11),
 (3, 13), (3, 24), (3, 25), (3, 26);
 
+-- Org 2 roles mirror org 1 (admin / moderator / user)
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT 4, `permission_id` FROM `role_permissions` WHERE `role_id` = 1;
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT 5, `permission_id` FROM `role_permissions` WHERE `role_id` = 2;
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT 6, `permission_id` FROM `role_permissions` WHERE `role_id` = 3;
+
 -- -----------------------------------------------------------
 -- Users
 -- -----------------------------------------------------------
@@ -108,7 +121,8 @@ INSERT INTO `users` (`id`, `organization_id`, `name`, `email`, `password_hash`, 
 (1, 1, 'System Admin',     'admin@ridecircle.local',     '{$passwords['Admin123!']}',  'active', '{$now}', '{$now}'),
 (2, 1, 'Content Moderator','moderator@ridecircle.local', '{$passwords['Mod12345!']}',  'active', '{$now}', '{$now}'),
 (3, 1, 'Alice Johnson',    'alice@ridecircle.local',     '{$passwords['Alice123!']}',  'active', '{$now}', '{$now}'),
-(4, 1, 'Bob Williams',     'bob@ridecircle.local',       '{$passwords['Bob12345!']}',  'active', '{$now}', '{$now}');
+(4, 1, 'Bob Williams',     'bob@ridecircle.local',       '{$passwords['Bob12345!']}',  'active', '{$now}', '{$now}'),
+(5, 2, 'Carol Other',      'carol@otherorg.local',       '{$passwords['Carol123!']}',  'active', '{$now}', '{$now}');
 
 -- -----------------------------------------------------------
 -- User-Role Assignments
@@ -117,7 +131,8 @@ INSERT INTO `user_roles` (`user_id`, `role_id`) VALUES
 (1, 1),
 (2, 2),
 (3, 3),
-(4, 3);
+(4, 3),
+(5, 6);
 
 -- -----------------------------------------------------------
 -- Sample Listings (by Alice, user_id=3)
@@ -125,7 +140,8 @@ INSERT INTO `user_roles` (`user_id`, `role_id`) VALUES
 INSERT INTO `listings` (`id`, `organization_id`, `user_id`, `title`, `description`, `pickup_address`, `dropoff_address`, `rider_count`, `vehicle_type`, `baggage_notes`, `time_window_start`, `time_window_end`, `tags`, `status`, `version`, `view_count`, `favorite_count`, `comment_count`, `last_activity_at`, `data_quality_score`, `created_at`, `updated_at`) VALUES
 (1, 1, 3, 'Morning Commute Downtown', 'Daily morning commute from suburbs to downtown financial district. Comfortable sedan, usually depart around 7:30 AM.', '42 Oak Lane, Suburbia', '100 Finance Blvd, Downtown', 2, 'sedan', 'Small backpack or briefcase only', '{$now}', DATE_ADD('{$now}', INTERVAL 2 HOUR), '["commute", "daily", "morning"]', 'active', 1, 15, 3, 1, '{$now}', 0.9200, '{$now}', '{$now}'),
 (2, 1, 3, 'Weekend Airport Shuttle', 'Weekend trip to the airport. Can accommodate larger luggage. SUV with plenty of trunk space.', '42 Oak Lane, Suburbia', 'International Airport Terminal 2', 3, 'suv', 'Two large suitcases OK', DATE_ADD('{$now}', INTERVAL 3 DAY), DATE_ADD(DATE_ADD('{$now}', INTERVAL 3 DAY), INTERVAL 4 HOUR), '["airport", "weekend", "luggage"]', 'draft', 1, 0, 0, 0, NULL, NULL, '{$now}', '{$now}'),
-(3, 1, 3, 'Evening Return from Campus', 'Returning from university campus after evening classes. Van available for group rides.', 'State University Main Gate', '42 Oak Lane, Suburbia', 4, 'van', NULL, DATE_ADD('{$now}', INTERVAL 1 DAY), DATE_ADD(DATE_ADD('{$now}', INTERVAL 1 DAY), INTERVAL 3 HOUR), '["university", "evening", "group"]', 'completed', 1, 42, 7, 5, '{$now}', 0.8750, '{$now}', '{$now}');
+(3, 1, 3, 'Evening Return from Campus', 'Returning from university campus after evening classes. Van available for group rides.', 'State University Main Gate', '42 Oak Lane, Suburbia', 4, 'van', NULL, DATE_ADD('{$now}', INTERVAL 1 DAY), DATE_ADD(DATE_ADD('{$now}', INTERVAL 1 DAY), INTERVAL 3 HOUR), '["university", "evening", "group"]', 'completed', 1, 42, 7, 5, '{$now}', 0.8750, '{$now}', '{$now}'),
+(4, 2, 5, 'Cross-tenant fixture listing', 'Used by API tests for organization isolation.', '100 East Ave', '200 West St', 2, 'sedan', NULL, '{$now}', DATE_ADD('{$now}', INTERVAL 2 HOUR), '["fixture", "isolation"]', 'active', 1, 0, 0, 0, NULL, NULL, '{$now}', '{$now}');
 
 -- -----------------------------------------------------------
 -- Sample Order (Bob as passenger on listing 1, Alice as driver)
